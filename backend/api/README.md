@@ -100,7 +100,7 @@ These services should coordinate the flow for a single feature.
 
 Use this for external tools or providers:
 
-- Whisper wrapper
+- speech-to-text provider client
 - text-to-speech provider client
 - vision model client
 - storage client
@@ -135,6 +135,54 @@ You do not need heavy model tests first. Begin with API contract tests.
 - `POST /api/v1/sign-to-text`
 - `POST /api/v1/photo-explain`
 
+## If you are using ElevenLabs for speech
+
+For this project, ElevenLabs is a good fit for:
+
+- text to speech output for lessons and responses
+- speech to text transcription for uploaded or recorded audio
+
+### Install
+
+These packages are now expected in `requirements-dev.txt`:
+
+- `elevenlabs`
+- `python-multipart`
+
+`python-multipart` is needed for FastAPI file upload endpoints.
+
+### Configure
+
+Add these values to `backend/api/.env`:
+
+```env
+ELEVENLABS_API_KEY=your_api_key_here
+ELEVENLABS_TTS_VOICE_ID=your_voice_id_here
+ELEVENLABS_TTS_MODEL_ID=eleven_flash_v2_5
+ELEVENLABS_STT_MODEL_ID=scribe_v2
+```
+
+Recommended starting choices:
+
+- `eleven_flash_v2_5` for low-latency TTS
+- `scribe_v2` for transcription
+
+### Backend files involved
+
+- `app/core/config.py` for env loading
+- `app/integrations/elevenlabs_client.py` for client creation
+- `app/services/speech_service.py` for TTS and STT orchestration
+
+### Recommended first use
+
+Do not wire ElevenLabs into `text-to-ksl` first.
+
+Instead:
+
+1. keep `text-to-ksl` as plain text logic
+2. use ElevenLabs in `speech-to-text`
+3. later use ElevenLabs in `text-to-speech` output after KSL mapping
+
 ## Suggested first backend work order
 
 1. Keep `health` working at all times.
@@ -142,6 +190,37 @@ You do not need heavy model tests first. Begin with API contract tests.
 3. Add `sign-to-text` after the dataset manifest and model interface are ready.
 4. Add `speech-to-text` once audio upload shape is decided.
 5. Add `photo-explain` after the lesson library can return supported signs.
+
+## Dataset cleanup workflow
+
+Before training or broadening the vocabulary, review the pose dataset safely from the repo root:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
+backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
+backend/api/.venv/bin/python backend/scripts/prefill_cleanup_decisions.py
+backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
+```
+
+This creates:
+
+- `backend/reports/ksl_cleanup/review_candidates.csv`
+- `backend/reports/ksl_cleanup/suspicious_labels.csv`
+- `backend/reports/ksl_cleanup/cleanup_decisions.csv`
+- `backend/reports/ksl_cleanup/cleaned/manifest.csv`
+
+Use `cleanup_decisions.csv` as the manual review sheet. Fill in:
+
+- `selected_action`
+- `target_label`
+- `notes`
+
+The template is backend-safe:
+
+- it does not change the raw `.npy` files
+- it does not change the stickman `.mp4` files
+- it refuses to overwrite an existing decision sheet unless you pass `--force`
+- the apply step only writes derived cleaned CSV and JSON outputs
 
 ## How to add a new feature cleanly
 

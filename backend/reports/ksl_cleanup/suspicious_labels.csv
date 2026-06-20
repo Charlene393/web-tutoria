@@ -1,0 +1,4 @@
+label,normalized_label,sample_count,unique_signers,unique_batches,avg_frame_count,median_frame_count,min_frame_count,max_frame_count,avg_left_hand_frame_pct,avg_right_hand_frame_pct,avg_both_hands_missing_frame_pct,samples_missing_stickman,samples_with_no_left_hand,samples_with_no_right_hand,samples_with_no_hands,label_flags
+.mp4,mp4,9,9,2,42.78,48,19,85,94.82,70.26,3.02,0,0,1,0,starts_with_period;looks_like_filename;contains_period;not_uppercase;contains_unexpected_characters
+BOY THAT,boythat,2,2,1,48.5,48.5,44,53,100.0,96.59,0.0,0,0,0,0,contains_space;contains_unexpected_characters;low_sample_count
+NICE TWIST,nicetwist,1,1,1,39,39,39,39,74.36,64.1,23.08,0,0,0,0,contains_space;contains_unexpected_characters;single_sample

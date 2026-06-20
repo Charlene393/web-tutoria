@@ -13,12 +13,11 @@ The project is being built around three core flows:
 ```text
 backend/
   api/                 FastAPI backend
+  scripts/             dataset cleanup and analysis scripts
 frontend/
   web/                 frontend app shell
 KSL-Dataset/
   Pose Data/           local pose and landmark dataset
-scripts/
-  analyze_ksl_dataset.py
 ```
 
 ## Prerequisites
@@ -130,8 +129,17 @@ If someone clones the repo and the dataset is not present, they need to copy it 
 You can inspect the dataset with:
 
 ```bash
-python3 scripts/analyze_ksl_dataset.py
+backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
+backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
 ```
+
+That workflow creates review files in:
+
+```text
+backend/reports/ksl_cleanup/
+```
+
+Use `cleanup_decisions.csv` as the manual sheet for `keep`, `rename`, `merge`, or `drop` decisions before changing anything in the raw dataset.
 
 ## Current dataset snapshot
 
@@ -139,11 +147,11 @@ From the current local dataset audit:
 
 - `2` batches
 - `40` signer folders
-- `728` unique labels
+- `727` unique labels
 - `1495` landmark samples
 - median samples per label: `1`
-- labels with only `1` sample: `473`
-- labels with fewer than `3` samples: `600`
+- labels with only `1` sample: `472`
+- labels with fewer than `3` samples: `598`
 
 This means the current dataset is better suited to a curated vocabulary tutor first, rather than a broad sentence-level KSL translation model.
 
@@ -168,7 +176,8 @@ pip install -r requirements-dev.txt
 Run the dataset audit:
 
 ```bash
-python3 scripts/analyze_ksl_dataset.py
+backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
+backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
 ```
 
 ## Troubleshooting

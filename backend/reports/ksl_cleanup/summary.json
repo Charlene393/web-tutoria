@@ -1,0 +1,18 @@
+{
+  "dataset_root": "/Users/charlenembugua/Documents/projects/web-tutoria/KSL-Dataset/Pose Data",
+  "output_dir": "/Users/charlenembugua/Documents/projects/web-tutoria/backend/reports/ksl_cleanup",
+  "total_samples": 1495,
+  "unique_labels": 727,
+  "unique_signers": 40,
+  "unique_batches": 2,
+  "labels_with_1_sample": 472,
+  "labels_with_lt_3_samples": 598,
+  "samples_missing_stickman": 0,
+  "samples_flagged_for_missing_hands_review": 224,
+  "labels_flagged_as_suspicious": 3,
+  "labels_flagged_as_low_support": 598,
+  "samples_flagged_for_review": 213,
+  "label_variant_groups": 0,
+  "short_sequence_threshold": 12,
+  "hand_missing_threshold": 50.0
+}
