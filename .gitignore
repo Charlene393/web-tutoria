@@ -1,0 +1,10 @@
+.DS_Store
+KSL-Dataset/Pose Data/
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+frontend/web/node_modules/
+frontend/web/dist/
