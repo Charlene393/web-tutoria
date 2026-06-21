@@ -1,9 +1,15 @@
-from pydantic import BaseModel
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
 
 
 class SpeechToTextResponse(BaseModel):
     transcript: str
     confidence: float | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    detected_language: str | None = None
+    text_to_ksl: TextToKslResponse | None = None
     status: str
 
 
@@ -14,6 +20,12 @@ class LessonAsset(BaseModel):
     source: str
     landmark_path: str | None = None
     stickman_video_path: str | None = None
+    batch: str | None = None
+    signer_id: str | None = None
+    frame_count: int | None = None
+    sample_flags: list[str] = Field(default_factory=list)
+    quality_score: float | None = None
+    selected_from_flagged_sample: bool | None = None
 
 
 class TextToKslResponse(BaseModel):
@@ -27,6 +39,9 @@ class TextToKslResponse(BaseModel):
     dataset_label_counts: dict[str, int]
     lesson_assets: list[LessonAsset]
     lesson_asset_id: str | None = None
+    catalog_backed: bool | None = None
+    catalog_name: str | None = None
+    catalog_generated_at: str | None = None
     status: str
 
 

@@ -26,6 +26,12 @@ When you are ready to derive a cleaned manifest from the drop decisions:
 backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
 ```
 
+Then build the backend lesson catalog from the cleaned manifest:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
+```
+
 It writes reports to:
 
 ```text
@@ -58,6 +64,8 @@ Main outputs:
   the drop decisions that were applied, with manifest match counts
 - `cleaned/label_counts.csv`:
   label-level counts recomputed from the cleaned manifest
+- `backend/api/app/data/ksl_lesson_catalog.json`:
+  the curated lesson asset catalog used by the FastAPI backend
 - `summary.json`:
   overall dataset counts and thresholds used
 
@@ -70,8 +78,9 @@ Recommended workflow:
 5. inspect the matching `.npy` and `Stickmans/*.mp4` files
 6. adjust `selected_action`, `target_label`, and `notes` if needed
 7. run `apply_cleanup_decisions_to_manifest.py`
-8. use `cleaned/manifest.csv` for backend-safe vocabulary curation and later training inputs
-9. only then update glossary or training inputs
+8. run `build_ksl_lesson_catalog.py`
+9. use `backend/api/app/data/ksl_lesson_catalog.json` as the backend lesson source of truth
+10. only then update glossary or training inputs
 
 Notes:
 
@@ -83,3 +92,4 @@ Notes:
 - the apply script does not touch `.npy` or `.mp4` files; it only writes derived CSV and JSON outputs
 - the apply script ignores non-drop actions like `keep`, `rename_label`, and `merge_label`
 - if you want a `drop_sample` or `drop_label` row temporarily excluded, set `review_status` to `hold`, `skip`, or `rejected`
+- the lesson catalog script picks one best cleaned sample per label for API playback and teaching use

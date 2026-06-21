@@ -5,6 +5,7 @@ import re
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from ..schemas.requests import TextToKslRequest
 from ..schemas.responses import LessonAsset, TextToKslResponse
@@ -12,20 +13,12 @@ from ..schemas.responses import LessonAsset, TextToKslResponse
 TOKEN_PATTERN = re.compile(r"[a-z0-9']+")
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[4]
-
-
-def _dataset_root() -> Path:
-    return _project_root() / "KSL-Dataset" / "Pose Data"
-
-
 def _glossary_path() -> Path:
     return Path(__file__).resolve().parents[1] / "data" / "ksl_glossary.json"
 
 
-def _relative_to_project(path: Path) -> str:
-    return str(path.relative_to(_project_root()))
+def _lesson_catalog_path() -> Path:
+    return Path(__file__).resolve().parents[1] / "data" / "ksl_lesson_catalog.json"
 
 
 def _normalize_text(text: str) -> str:
@@ -44,54 +37,67 @@ def _collapse_token(value: str) -> str:
 
 
 @lru_cache(maxsize=1)
-def _load_dataset_label_counts() -> Counter[str]:
-    dataset_root = _dataset_root()
-    if not dataset_root.exists():
-        raise RuntimeError(f"KSL dataset not found at {dataset_root}")
+def _load_lesson_catalog_data() -> dict[str, Any]:
+    catalog_path = _lesson_catalog_path()
+    if not catalog_path.exists():
+        raise RuntimeError(
+            f"KSL lesson catalog not found at {catalog_path}. "
+            "Run backend/scripts/build_ksl_lesson_catalog.py first."
+        )
 
-    counts: Counter[str] = Counter()
-    for file_path in dataset_root.glob("Batch */*/Extract/Landmarks/*.npy"):
-        label = file_path.stem.strip()
-        if not label or label.startswith("."):
-            continue
-        counts[label] += 1
+    with catalog_path.open("r", encoding="utf-8") as file:
+        catalog = json.load(file)
 
-    if not counts:
-        raise RuntimeError(f"No landmark labels found under {dataset_root}")
+    entries = catalog.get("entries", [])
+    if not isinstance(entries, list) or not entries:
+        raise RuntimeError(f"KSL lesson catalog at {catalog_path} does not contain any entries.")
 
-    return counts
+    labels = [entry.get("label") for entry in entries if entry.get("label")]
+    duplicate_labels = sorted(label for label, count in Counter(labels).items() if count > 1)
+    if duplicate_labels:
+        raise RuntimeError(f"KSL lesson catalog contains duplicate labels: {duplicate_labels}")
+
+    return catalog
 
 
 @lru_cache(maxsize=1)
-def _load_dataset_label_lookup() -> dict[str, str]:
-    label_counts = _load_dataset_label_counts()
-    return {_collapse_token(label): label for label in label_counts}
-
-
-@lru_cache(maxsize=1)
-def _load_dataset_assets() -> dict[str, LessonAsset]:
-    dataset_root = _dataset_root()
-    label_counts = _load_dataset_label_counts()
+def _load_lesson_catalog_assets() -> dict[str, LessonAsset]:
+    catalog = _load_lesson_catalog_data()
     assets: dict[str, LessonAsset] = {}
 
-    landmark_files = sorted(dataset_root.glob("Batch */*/Extract/Landmarks/*.npy"))
-
-    for landmark_path in landmark_files:
-        label = landmark_path.stem.strip()
-        if label not in label_counts or label in assets:
-            continue
-
-        stickman_path = landmark_path.parents[1] / "Stickmans" / f"{label}.mp4"
+    for entry in catalog["entries"]:
+        label = entry["label"]
         assets[label] = LessonAsset(
-            asset_id=f"dataset-sign:{label.lower()}",
+            asset_id=entry["asset_id"],
             label=label,
-            sample_count=label_counts[label],
-            source="dataset",
-            landmark_path=_relative_to_project(landmark_path),
-            stickman_video_path=_relative_to_project(stickman_path) if stickman_path.exists() else None,
+            sample_count=int(entry["sample_count"]),
+            source=entry.get("source", "cleaned_lesson_catalog"),
+            landmark_path=entry.get("landmark_path"),
+            stickman_video_path=entry.get("stickman_video_path"),
+            batch=entry.get("batch"),
+            signer_id=entry.get("signer_id"),
+            frame_count=entry.get("frame_count"),
+            sample_flags=entry.get("sample_flags") or [],
+            quality_score=entry.get("quality_score"),
+            selected_from_flagged_sample=entry.get("selected_from_flagged_sample"),
         )
 
     return assets
+
+
+@lru_cache(maxsize=1)
+def _load_catalog_label_counts() -> Counter[str]:
+    return Counter(
+        {
+            label: asset.sample_count
+            for label, asset in _load_lesson_catalog_assets().items()
+        }
+    )
+
+
+@lru_cache(maxsize=1)
+def _load_catalog_label_lookup() -> dict[str, str]:
+    return {_collapse_token(label): label for label in _load_catalog_label_counts()}
 
 
 @lru_cache(maxsize=1)
@@ -100,7 +106,7 @@ def _load_glossary() -> dict[str, object]:
     with glossary_path.open("r", encoding="utf-8") as file:
         glossary = json.load(file)
 
-    label_counts = _load_dataset_label_counts()
+    label_counts = _load_catalog_label_counts()
     invalid_entries: list[str] = []
 
     for term, labels in glossary.get("aliases", {}).items():
@@ -115,16 +121,17 @@ def _load_glossary() -> dict[str, object]:
 
     if invalid_entries:
         message = ", ".join(invalid_entries)
-        raise RuntimeError(f"Glossary references labels missing from dataset: {message}")
+        raise RuntimeError(f"Glossary references labels missing from cleaned lesson catalog: {message}")
 
     return glossary
 
 
 def map_text_to_ksl(request: TextToKslRequest) -> TextToKslResponse:
     glossary = _load_glossary()
-    label_counts = _load_dataset_label_counts()
-    dataset_lookup = _load_dataset_label_lookup()
-    dataset_assets = _load_dataset_assets()
+    catalog = _load_lesson_catalog_data()
+    label_counts = _load_catalog_label_counts()
+    label_lookup = _load_catalog_label_lookup()
+    lesson_catalog_assets = _load_lesson_catalog_assets()
 
     original_text = request.text
     normalized_text = _normalize_text(original_text)
@@ -165,7 +172,7 @@ def map_text_to_ksl(request: TextToKslRequest) -> TextToKslResponse:
             matched_term = token
 
         if matched_labels is None:
-            direct_label = dataset_lookup.get(_collapse_token(token))
+            direct_label = label_lookup.get(_collapse_token(token))
             if direct_label:
                 matched_labels = [direct_label]
                 matched_term = token
@@ -180,10 +187,11 @@ def map_text_to_ksl(request: TextToKslRequest) -> TextToKslResponse:
         index += 1
 
     dataset_label_counts = {label: label_counts[label] for label in gloss}
-    supported = bool(gloss) and not unmatched_terms
-    dataset_backed = bool(gloss) and all(label in label_counts for label in gloss)
-    lesson_assets = [dataset_assets[label] for label in gloss if label in dataset_assets]
+    catalog_backed = bool(gloss) and all(label in label_counts for label in gloss)
+    dataset_backed = catalog_backed
+    lesson_assets = [lesson_catalog_assets[label] for label in gloss if label in lesson_catalog_assets]
     lesson_asset_id = f"dataset-sequence:{'__'.join(gloss).lower()}" if gloss else None
+    supported = bool(gloss) and not unmatched_terms
 
     if supported:
         status = "ok"
@@ -203,5 +211,8 @@ def map_text_to_ksl(request: TextToKslRequest) -> TextToKslResponse:
         dataset_label_counts=dataset_label_counts,
         lesson_assets=lesson_assets,
         lesson_asset_id=lesson_asset_id,
+        catalog_backed=catalog_backed,
+        catalog_name=catalog.get("catalog_name"),
+        catalog_generated_at=catalog.get("generated_at"),
         status=status,
     )

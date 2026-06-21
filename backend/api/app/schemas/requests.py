@@ -2,7 +2,10 @@ from pydantic import BaseModel
 
 
 class SpeechToTextRequest(BaseModel):
-    audio_url: str | None = None
+    filename: str | None = None
+    content_type: str | None = None
+    audio_bytes: bytes
+    include_ksl: bool = True
     session_id: str | None = None
 
 

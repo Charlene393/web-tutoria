@@ -1,8 +1,22 @@
+import json
+from pathlib import Path
+
 from starlette.testclient import TestClient
 
 from app.main import app
 
 client = TestClient(app)
+
+
+def test_lesson_catalog_file_exists_and_excludes_dropped_label() -> None:
+    catalog_path = Path(__file__).resolve().parents[1] / "app" / "data" / "ksl_lesson_catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+
+    assert catalog["catalog_name"] == "ksl_cleaned_lesson_catalog"
+    assert catalog["total_entries"] > 0
+    labels = {entry["label"] for entry in catalog["entries"]}
+    assert ".mp4" not in labels
+    assert "ME" in labels
 
 
 def test_text_to_ksl_phrase_match_uses_dataset_backed_gloss() -> None:
@@ -20,8 +34,27 @@ def test_text_to_ksl_phrase_match_uses_dataset_backed_gloss() -> None:
     assert body["dataset_label_counts"]["FOOD"] > 0
     assert body["lesson_asset_id"] == "dataset-sequence:me__want__food"
     assert [asset["label"] for asset in body["lesson_assets"]] == ["ME", "WANT", "FOOD"]
+    assert body["lesson_assets"][0]["source"] == "cleaned_lesson_catalog"
+    assert body["lesson_assets"][0]["frame_count"] > 0
+    assert isinstance(body["lesson_assets"][0]["sample_flags"], list)
+    assert body["lesson_assets"][0]["quality_score"] is not None
     assert body["lesson_assets"][0]["landmark_path"].endswith("/ME.npy")
     assert body["lesson_assets"][0]["stickman_video_path"].endswith("/ME.mp4")
+    assert body["catalog_backed"] is True
+    assert body["catalog_name"] == "ksl_cleaned_lesson_catalog"
+    assert body["catalog_generated_at"]
+    assert body["status"] == "ok"
+
+
+def test_text_to_ksl_alias_uses_cleaned_catalog_asset() -> None:
+    response = client.post("/api/v1/text-to-ksl", json={"text": "hello"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["gloss"] == ["GREETING"]
+    assert body["lesson_assets"][0]["label"] == "GREETING"
+    assert body["lesson_assets"][0]["source"] == "cleaned_lesson_catalog"
+    assert body["catalog_backed"] is True
     assert body["status"] == "ok"
 
 

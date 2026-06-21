@@ -183,6 +183,63 @@ Instead:
 2. use ElevenLabs in `speech-to-text`
 3. later use ElevenLabs in `text-to-speech` output after KSL mapping
 
+### Speech-to-text test flow
+
+Reinstall dependencies first so the backend has both `elevenlabs` and `python-multipart`:
+
+```bash
+cd backend/api
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+Set your key in `backend/api/.env`:
+
+```env
+ELEVENLABS_API_KEY=your_real_api_key
+ELEVENLABS_STT_MODEL_ID=scribe_v2
+```
+
+Start the backend:
+
+```bash
+bash start-dev.sh
+```
+
+Then test with a real audio file:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/speech-to-text \
+  -F "audio=@/absolute/path/to/sample.wav" \
+  -F "include_ksl=true"
+```
+
+Or use the helper script from `backend/api`:
+
+```bash
+bash test-speech.sh "/Users/charlenembugua/Downloads/sample.wav" true
+```
+
+What success looks like:
+
+- `transcript` contains the spoken text
+- `provider` is `elevenlabs`
+- `model_id` is `scribe_v2`
+- `text_to_ksl.gloss` is present when the transcript matches supported KSL terms
+- `text_to_ksl.lesson_assets` comes from the cleaned lesson catalog
+
+You can also test it in the interactive docs at:
+
+- `http://127.0.0.1:8000/docs`
+
+If you want transcription only, without KSL mapping:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/speech-to-text \
+  -F "audio=@/absolute/path/to/sample.wav" \
+  -F "include_ksl=false"
+```
+
 ## Suggested first backend work order
 
 1. Keep `health` working at all times.
@@ -200,6 +257,7 @@ backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
 backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
 backend/api/.venv/bin/python backend/scripts/prefill_cleanup_decisions.py
 backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
+backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
 ```
 
 This creates:
@@ -208,6 +266,7 @@ This creates:
 - `backend/reports/ksl_cleanup/suspicious_labels.csv`
 - `backend/reports/ksl_cleanup/cleanup_decisions.csv`
 - `backend/reports/ksl_cleanup/cleaned/manifest.csv`
+- `backend/api/app/data/ksl_lesson_catalog.json`
 
 Use `cleanup_decisions.csv` as the manual review sheet. Fill in:
 
@@ -221,6 +280,8 @@ The template is backend-safe:
 - it does not change the stickman `.mp4` files
 - it refuses to overwrite an existing decision sheet unless you pass `--force`
 - the apply step only writes derived cleaned CSV and JSON outputs
+
+For `text-to-ksl`, the backend now uses `ksl_lesson_catalog.json` as the lesson asset source of truth instead of scanning the raw dataset folders directly.
 
 ## How to add a new feature cleanly
 

@@ -131,6 +131,9 @@ You can inspect the dataset with:
 ```bash
 backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
 backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
+backend/api/.venv/bin/python backend/scripts/prefill_cleanup_decisions.py
+backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
+backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
 ```
 
 That workflow creates review files in:
@@ -140,6 +143,7 @@ backend/reports/ksl_cleanup/
 ```
 
 Use `cleanup_decisions.csv` as the manual sheet for `keep`, `rename`, `merge`, or `drop` decisions before changing anything in the raw dataset.
+After that, use `backend/api/app/data/ksl_lesson_catalog.json` as the backend lesson source of truth.
 
 ## Current dataset snapshot
 
@@ -178,6 +182,17 @@ Run the dataset audit:
 ```bash
 backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
 backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
+backend/api/.venv/bin/python backend/scripts/prefill_cleanup_decisions.py
+backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
+backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
+```
+
+Test speech-to-text with ElevenLabs after adding your API key:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/speech-to-text \
+  -F "audio=@/absolute/path/to/sample.wav" \
+  -F "include_ksl=true"
 ```
 
 ## Troubleshooting
