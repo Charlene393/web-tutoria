@@ -1,10 +1,20 @@
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from ...schemas.requests import SpeechToTextRequest
-from ...schemas.responses import SpeechToTextResponse
-from ...services.speech_service import transcribe_speech
+from ...schemas.requests import SpeechToTextRequest, TextToSpeechRequest
+from ...schemas.responses import SpeechToTextResponse, TextToSpeechResponse
+from ...services.speech_service import synthesize_speech, transcribe_speech
 
 router = APIRouter(tags=["speech"])
+
+
+@router.post("/text-to-speech", response_model=TextToSpeechResponse)
+def text_to_speech(request: TextToSpeechRequest) -> TextToSpeechResponse:
+    try:
+        return synthesize_speech(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/speech-to-text", response_model=SpeechToTextResponse)

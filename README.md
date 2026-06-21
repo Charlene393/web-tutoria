@@ -5,6 +5,7 @@ Web Tutoria is an AI learning system for Kenyan Sign Language (KSL).
 The project is being built around three core flows:
 
 - speech -> text -> KSL lesson or sign playback
+- text -> speech + KSL lesson playback
 - signer video or webcam -> text -> speech
 - photo upload -> explanation -> matching KSL lesson
 
@@ -24,7 +25,7 @@ KSL-Dataset/
 
 Install these before setup:
 
-- Python `3.11+`
+- Python `3.11` or `3.12`
 - Git
 
 Frontend tooling can be added later when the web app is bootstrapped.
@@ -37,10 +38,7 @@ If you only want the backend running, use this full copy-paste flow:
 git clone <your-repo-url>
 cd web-tutoria
 cd backend/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements-dev.txt
+bash setup-venv.sh
 cp .env.example .env
 bash start-dev.sh
 ```
@@ -58,16 +56,12 @@ cd web-tutoria
 
 ```bash
 cd backend/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
+bash setup-venv.sh
 ```
 
 ### 3. Install backend dependencies
 
-```bash
-pip install -r requirements-dev.txt
-```
+This is handled by `setup-venv.sh`.
 
 ### 4. Create backend environment variables
 
@@ -114,6 +108,7 @@ backend/api/
   tests/              backend tests
   .env.example
   pyproject.toml
+  setup-venv.sh
 ```
 
 ## Dataset note
@@ -187,12 +182,39 @@ backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest
 backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
 ```
 
-Test speech-to-text with ElevenLabs after adding your API key:
+Test speech-to-text with faster-whisper after installing the backend dependencies:
 
 ```bash
+bash warmup-stt.sh
 curl -X POST http://127.0.0.1:8000/api/v1/speech-to-text \
   -F "audio=@/absolute/path/to/sample.wav" \
   -F "include_ksl=true"
+```
+
+Test text-to-speech with Kokoro after installing the backend dependencies:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/text-to-speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "I want food",
+    "include_ksl": true
+  }'
+```
+
+The current backend is split like this:
+
+- `text-to-speech` is local and free with Kokoro
+- `speech-to-text` is local with faster-whisper
+
+On the first speech-to-text run, `faster-whisper` downloads its model from Hugging Face. Run `bash warmup-stt.sh` once while you are online so later requests can use the local cache.
+
+If a previous `pip install -r requirements-dev.txt` failed during the Kokoro setup, pull the latest backend changes and run the install again before testing TTS.
+
+If you previously created `.venv` with Python `3.13`, rebuild it from `backend/api` with:
+
+```bash
+bash setup-venv.sh
 ```
 
 ## Troubleshooting

@@ -13,6 +13,20 @@ class SpeechToTextResponse(BaseModel):
     status: str
 
 
+class TextToSpeechResponse(BaseModel):
+    text: str
+    audio_base64: str
+    audio_size_bytes: int
+    content_type: str
+    file_extension: str
+    provider: str | None = None
+    model_id: str | None = None
+    voice_id: str | None = None
+    output_format: str | None = None
+    text_to_ksl: TextToKslResponse | None = None
+    status: str
+
+
 class LessonAsset(BaseModel):
     asset_id: str
     label: str

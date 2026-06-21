@@ -9,6 +9,14 @@ class SpeechToTextRequest(BaseModel):
     session_id: str | None = None
 
 
+class TextToSpeechRequest(BaseModel):
+    text: str
+    voice_id: str | None = None
+    output_format: str | None = None
+    include_ksl: bool = False
+    session_id: str | None = None
+
+
 class TextToKslRequest(BaseModel):
     text: str
 

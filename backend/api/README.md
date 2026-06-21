@@ -18,15 +18,14 @@ If you want the safest first-time setup, copy and paste this whole block:
 
 ```bash
 cd backend/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements-dev.txt
+bash setup-venv.sh
 cp .env.example .env
 bash start-dev.sh
 ```
 
 That is the main supported local dev flow for this backend.
+
+Important: because Kokoro is used for local text-to-speech, this backend currently needs Python `3.11` or `3.12`. Python `3.13` will not install the Kokoro stack correctly.
 
 Then open:
 
@@ -51,6 +50,7 @@ backend/api/
   .env.example
   pyproject.toml
   README.md
+  setup-venv.sh
 ```
 
 ## What each backend folder should contain
@@ -130,80 +130,172 @@ You do not need heavy model tests first. Begin with API contract tests.
 ## Recommended endpoints
 
 - `GET /api/v1/health`
+- `POST /api/v1/text-to-speech`
 - `POST /api/v1/speech-to-text`
 - `POST /api/v1/text-to-ksl`
 - `POST /api/v1/sign-to-text`
 - `POST /api/v1/photo-explain`
 
-## If you are using ElevenLabs for speech
+## Speech providers in this backend
 
-For this project, ElevenLabs is a good fit for:
+For the current backend setup:
 
-- text to speech output for lessons and responses
-- speech to text transcription for uploaded or recorded audio
+- `Kokoro` handles text-to-speech locally with no billing
+- `faster-whisper` handles speech-to-text locally with no billing
 
 ### Install
 
 These packages are now expected in `requirements-dev.txt`:
 
-- `elevenlabs`
+- `kokoro`
+- `misaki`
+- `numpy`
+- `soundfile`
+- `faster-whisper`
 - `python-multipart`
 
 `python-multipart` is needed for FastAPI file upload endpoints.
+
+On macOS, Kokoro may also need:
+
+```bash
+brew install espeak-ng
+```
+
+This repo pins a Kokoro version that is meant to install cleanly in the current backend setup, but only on Python `3.11` or `3.12`. If you previously created `.venv` with Python `3.13`, rebuild it with `bash setup-venv.sh`.
 
 ### Configure
 
 Add these values to `backend/api/.env`:
 
 ```env
-ELEVENLABS_API_KEY=your_api_key_here
-ELEVENLABS_TTS_VOICE_ID=your_voice_id_here
-ELEVENLABS_TTS_MODEL_ID=eleven_flash_v2_5
-ELEVENLABS_STT_MODEL_ID=scribe_v2
+FASTER_WHISPER_MODEL_SIZE=small
+FASTER_WHISPER_DEVICE=cpu
+FASTER_WHISPER_COMPUTE_TYPE=int8
+FASTER_WHISPER_LANGUAGE=en
+FASTER_WHISPER_BEAM_SIZE=5
+FASTER_WHISPER_VAD_FILTER=true
+KOKORO_VOICE=af_heart
+KOKORO_LANG_CODE=a
+KOKORO_MODEL_ID=Kokoro-82M
+KOKORO_SAMPLE_RATE=24000
+KOKORO_SPEED=1.0
 ```
 
 Recommended starting choices:
 
-- `eleven_flash_v2_5` for low-latency TTS
-- `scribe_v2` for transcription
+- `af_heart` for Kokoro voice
+- `small` for the faster-whisper model size
+
+Important for the first STT run:
+
+- `faster-whisper` downloads its model files from Hugging Face the first time
+- run `bash warmup-stt.sh` once while you are connected to the internet
+- after that, speech-to-text works from the cached local model
 
 ### Backend files involved
 
 - `app/core/config.py` for env loading
-- `app/integrations/elevenlabs_client.py` for client creation
+- `app/integrations/faster_whisper_client.py` for local speech-to-text loading
+- `app/integrations/kokoro_client.py` for Kokoro pipeline loading
 - `app/services/speech_service.py` for TTS and STT orchestration
 
 ### Recommended first use
 
-Do not wire ElevenLabs into `text-to-ksl` first.
+Do not wire heavy model logic into `text-to-ksl` first.
 
 Instead:
 
 1. keep `text-to-ksl` as plain text logic
-2. use ElevenLabs in `speech-to-text`
-3. later use ElevenLabs in `text-to-speech` output after KSL mapping
+2. use Kokoro in `text-to-speech`
+3. use faster-whisper in `speech-to-text`
 
-### Speech-to-text test flow
+### Text-to-speech test flow
 
-Reinstall dependencies first so the backend has both `elevenlabs` and `python-multipart`:
+Install backend dependencies and the macOS speech helper first:
 
 ```bash
 cd backend/api
-source .venv/bin/activate
-pip install -r requirements-dev.txt
+bash setup-venv.sh
+brew install espeak-ng
 ```
 
-Set your key in `backend/api/.env`:
+Set your Kokoro configuration in `backend/api/.env`:
 
 ```env
-ELEVENLABS_API_KEY=your_real_api_key
-ELEVENLABS_STT_MODEL_ID=scribe_v2
+KOKORO_VOICE=af_heart
+KOKORO_LANG_CODE=a
 ```
 
 Start the backend:
 
 ```bash
 bash start-dev.sh
+```
+
+On the very first Kokoro run, the backend downloads the model weights from Hugging Face. That download is large, so the first request can take a while. If you want to do that step ahead of time, run:
+
+```bash
+bash warmup-kokoro.sh
+```
+
+Then test with `curl`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/text-to-speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "I want food",
+    "include_ksl": true
+  }'
+```
+
+Or use the helper script from `backend/api`:
+
+```bash
+bash test-tts.sh "I want food" ./tts-output.wav true
+```
+
+What success looks like:
+
+- `audio_base64` is present
+- `content_type` is `audio/wav`
+- `voice_id` and `model_id` reflect your Kokoro config
+- `text_to_ksl.gloss` is present when `include_ksl=true`
+- the helper script saves a playable audio file locally
+
+This endpoint returns JSON for backend-first testing. Later, if you want, we can add a streaming or file-download version for the frontend player.
+
+### Speech-to-text test flow
+
+Speech-to-text is now local with faster-whisper, so this part does not need any API key.
+
+Reinstall dependencies first so the backend has both `faster-whisper` and `python-multipart`:
+
+```bash
+cd backend/api
+bash setup-venv.sh
+```
+
+Set your local speech configuration in `backend/api/.env`:
+
+```env
+FASTER_WHISPER_MODEL_SIZE=small
+FASTER_WHISPER_DEVICE=cpu
+FASTER_WHISPER_COMPUTE_TYPE=int8
+FASTER_WHISPER_LANGUAGE=en
+```
+
+Start the backend:
+
+```bash
+bash start-dev.sh
+```
+
+On the very first faster-whisper run, the backend downloads the transcription model from Hugging Face. If you want to do that step ahead of time, run:
+
+```bash
+bash warmup-stt.sh
 ```
 
 Then test with a real audio file:
@@ -223,8 +315,8 @@ bash test-speech.sh "/Users/charlenembugua/Downloads/sample.wav" true
 What success looks like:
 
 - `transcript` contains the spoken text
-- `provider` is `elevenlabs`
-- `model_id` is `scribe_v2`
+- `provider` is `faster_whisper`
+- `model_id` reflects your local model size such as `small`
 - `text_to_ksl.gloss` is present when the transcript matches supported KSL terms
 - `text_to_ksl.lesson_assets` comes from the cleaned lesson catalog
 
