@@ -59,10 +59,24 @@ class TextToKslResponse(BaseModel):
     status: str
 
 
+class SignMatchCandidate(BaseModel):
+    label: str
+    confidence: float
+    landmark_path: str | None = None
+    lesson_asset_id: str | None = None
+
+
 class SignToTextResponse(BaseModel):
     label: str | None = None
     confidence: float | None = None
     text: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    source_landmark_path: str | None = None
+    matched_landmark_path: str | None = None
+    lesson_asset_id: str | None = None
+    dataset_backed: bool = False
+    top_matches: list[SignMatchCandidate] = Field(default_factory=list)
     status: str
 
 

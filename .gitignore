@@ -8,3 +8,5 @@ __pycache__/
 .env.*
 frontend/web/node_modules/
 frontend/web/dist/
+backend/api/app/data/ksl_sign_recognizer_v1.npz
+backend/reports/ksl_cleanup/sign_recognizer_eval.json

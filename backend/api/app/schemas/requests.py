@@ -23,7 +23,9 @@ class TextToKslRequest(BaseModel):
 
 class SignToTextRequest(BaseModel):
     landmark_path: str | None = None
+    lesson_asset_id: str | None = None
     video_url: str | None = None
+    top_k: int = 3
     session_id: str | None = None
 
 

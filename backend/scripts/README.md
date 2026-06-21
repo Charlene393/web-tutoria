@@ -32,6 +32,20 @@ Then build the backend lesson catalog from the cleaned manifest:
 backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
 ```
 
+To build the landmark-based sign recognizer artifact used by the backend:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/train_sign_classifier.py
+```
+
+By default this uses the bundled `backend/api/app/data/ksl_sign_v1_labels.json` whitelist and only keeps labels that meet the backend minimum sample threshold.
+
+To run a simple holdout evaluation report for the recognizer:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/evaluate_sign_classifier.py
+```
+
 It writes reports to:
 
 ```text

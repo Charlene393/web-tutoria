@@ -206,6 +206,9 @@ The current backend is split like this:
 
 - `text-to-speech` is local and free with Kokoro
 - `speech-to-text` is local with faster-whisper
+- `sign-to-text` is dataset-backed from cleaned `.npy` landmarks
+
+The current sign recognizer is intentionally narrowed to a bundled `v1` sign list in `backend/api/app/data/ksl_sign_v1_labels.json` and only keeps labels with at least `5` cleaned samples by default.
 
 On the first speech-to-text run, `faster-whisper` downloads its model from Hugging Face. Run `bash warmup-stt.sh` once while you are online so later requests can use the local cache.
 
@@ -215,6 +218,18 @@ If you previously created `.venv` with Python `3.13`, rebuild it from `backend/a
 
 ```bash
 bash setup-venv.sh
+```
+
+Test sign-to-text against a cleaned landmark file:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/train_sign_classifier.py
+curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy",
+    "top_k": 3
+  }'
 ```
 
 ## Troubleshooting

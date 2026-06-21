@@ -6,6 +6,12 @@ class Settings(BaseSettings):
     app_name: str = "Web Tutoria API"
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
+    sign_recognizer_artifact_path: str | None = None
+    sign_recognizer_manifest_path: str | None = None
+    sign_recognizer_label_set_path: str | None = None
+    sign_recognizer_min_samples_per_label: int = 5
+    sign_recognizer_target_frames: int = 24
+    sign_recognizer_default_top_k: int = 3
     faster_whisper_model_size: str = "small"
     faster_whisper_device: str = "cpu"
     faster_whisper_compute_type: str = "int8"

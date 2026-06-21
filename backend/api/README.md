@@ -199,6 +199,9 @@ Important for the first STT run:
 - `app/integrations/faster_whisper_client.py` for local speech-to-text loading
 - `app/integrations/kokoro_client.py` for Kokoro pipeline loading
 - `app/services/speech_service.py` for TTS and STT orchestration
+- `app/services/sign_features.py` for landmark feature extraction
+- `app/services/sign_recognizer.py` for the dataset-backed sign index
+- `app/services/sign_to_text_service.py` for sign recognition orchestration
 
 ### Recommended first use
 
@@ -319,6 +322,55 @@ What success looks like:
 - `model_id` reflects your local model size such as `small`
 - `text_to_ksl.gloss` is present when the transcript matches supported KSL terms
 - `text_to_ksl.lesson_assets` comes from the cleaned lesson catalog
+
+### Sign-to-text MVP flow
+
+This backend now supports a first sign-to-text MVP using `.npy` landmark files from your cleaned KSL dataset.
+
+What it does today:
+
+- loads a landmark sequence from `landmark_path`
+- builds or loads a local recognizer artifact from the cleaned manifest
+- restricts runtime recognition to the bundled `app/data/ksl_sign_v1_labels.json` starter vocabulary
+- keeps only labels with at least `5` cleaned samples by default
+- matches the sequence against cleaned dataset samples
+- returns the predicted label, confidence, and top candidate labels
+
+What it does not do yet:
+
+- webcam capture
+- raw video parsing
+- live browser inference
+
+Build the recognizer artifact ahead of time if you want:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/train_sign_classifier.py
+```
+
+The default build uses:
+
+- `app/data/ksl_sign_v1_labels.json` as the curated `v1` label set
+- `SIGN_RECOGNIZER_MIN_SAMPLES_PER_LABEL=5` as the minimum cleaned support threshold
+
+Then test the endpoint with a real dataset landmark file:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy",
+    "top_k": 3
+  }'
+```
+
+What success looks like:
+
+- `label` is predicted from the cleaned dataset
+- `provider` is `dataset_knn`
+- `model_id` is `dataset-sign-knn-v1`
+- `matched_landmark_path` points to the closest cleaned sample
+- `top_matches` returns candidate labels for debugging
 
 You can also test it in the interactive docs at:
 
