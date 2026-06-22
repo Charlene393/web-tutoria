@@ -32,6 +32,23 @@ Then open:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/api/v1/health`
 
+The health endpoint now reports backend readiness details, not just a plain `ok`.
+Use it before testing other endpoints:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/health
+```
+
+What it reports:
+
+- app name and version
+- whether the lesson catalog file exists
+- whether the cleaned sign manifest exists
+- whether the recognizer artifact exists
+- whether Kokoro can initialize
+- whether faster-whisper can initialize
+- whether the optional sign-video model file is present
+
 ## Folder structure
 
 ```text
@@ -135,8 +152,10 @@ You do not need heavy model tests first. Begin with API contract tests.
 - `POST /api/v1/text-to-ksl`
 - `POST /api/v1/sign-to-text`
 - `POST /api/v1/sign-sequence-to-text`
+- `POST /api/v1/sign-sequence-to-text-upload`
 - `POST /api/v1/sign-to-text-upload`
 - `POST /api/v1/photo-explain`
+- `POST /api/v1/photo-explain-upload`
 
 ## Speech providers in this backend
 
@@ -349,6 +368,7 @@ This backend now supports a first sign-to-text MVP using either:
 
 - `.npy` landmark files from your cleaned KSL dataset
 - multiple single-sign inputs combined through `POST /api/v1/sign-sequence-to-text`
+- uploaded `.npy` sign sequences combined through `POST /api/v1/sign-sequence-to-text-upload`
 - uploaded sign videos through MediaPipe landmark extraction
 
 What it does today:
@@ -435,6 +455,7 @@ Or use the upload helper script from `backend/api`:
 ```bash
 bash test-sign-upload.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" false
 bash test-sign-upload.sh "/absolute/path/to/sign-video.mp4" true ./sign-upload.wav 3
+bash test-sign-sequence-upload.sh true ./sequence.wav "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" "KSL-Dataset/Pose Data/Batch 2/76/Extract/Landmarks/WANT.npy"
 ```
 
 To test multiple signs as one sentence:
@@ -464,6 +485,57 @@ What success looks like:
 - `source_kind` tells you whether the request came from a path, lesson asset, uploaded landmark file, or uploaded video
 - `speech.audio_base64` is present when `include_speech=true`
 - `sign-sequence-to-text` returns combined `text`, per-sign `items`, and optional `text_to_ksl` for the full sequence
+
+### Photo-explain v1 flow
+
+This backend now supports a safe first photo-explain backend flow.
+
+What it does today:
+
+- accepts `object_name` directly in JSON, or an uploaded image with a useful filename like `car.jpg`
+- generates a short student-friendly explanation
+- maps the object name into the existing `text-to-ksl` lesson flow
+- returns the suggested sign when the glossary or cleaned lesson catalog supports it
+- can optionally synthesize the explanation back to speech with Kokoro
+
+What it does not do yet:
+
+- full vision-based object detection
+- OCR
+- scene understanding across many objects
+
+Test with JSON:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/photo-explain \
+  -H "Content-Type: application/json" \
+  -d '{
+    "object_name": "car",
+    "include_ksl": true,
+    "include_speech": false
+  }'
+```
+
+Test with an uploaded image:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/photo-explain-upload \
+  -F "image=@/absolute/path/to/car.jpg" \
+  -F "include_ksl=true"
+```
+
+Or use the helper script:
+
+```bash
+bash test-photo-explain.sh "/absolute/path/to/car.jpg" car true ./photo-explain.wav
+```
+
+What success looks like:
+
+- `object_name` is resolved from `object_name`, filename, or prompt
+- `explanation` contains a short teaching explanation
+- `suggested_sign` is present when KSL mapping exists
+- `text_to_ksl.lesson_assets` links the photo concept to backend lesson playback
 
 You can also test it in the interactive docs at:
 

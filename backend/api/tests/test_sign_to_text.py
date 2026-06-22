@@ -242,6 +242,51 @@ def test_sign_sequence_to_text_can_include_speech(tmp_path, monkeypatch) -> None
     assert body["speech"]["audio_base64"] == "ZmFrZS13YXY="
 
 
+def test_sign_sequence_to_text_upload_accepts_multiple_landmark_files(tmp_path, monkeypatch) -> None:
+    hello_path, thanks_path = _configure_test_recognizer(tmp_path, monkeypatch)
+
+    def fake_map_text_to_ksl(request):
+        return TextToKslResponse(
+            original_text=request.text,
+            normalized_text=request.text.lower(),
+            gloss=request.text.split(),
+            matched_terms=request.text.lower().split(),
+            unmatched_terms=[],
+            supported=True,
+            dataset_backed=True,
+            dataset_label_counts={"HELLO": 1, "THANKS": 1},
+            lesson_assets=[],
+            lesson_asset_id="dataset-sequence:hello__thanks",
+            catalog_backed=True,
+            catalog_name="test_catalog",
+            catalog_generated_at="2026-06-22T00:00:00+00:00",
+            status="ok",
+        )
+
+    monkeypatch.setattr(sign_to_text_service, "map_text_to_ksl", fake_map_text_to_ksl)
+
+    response = client.post(
+        "/api/v1/sign-sequence-to-text-upload",
+        files=[
+            ("sign_files", ("HELLO.npy", hello_path.read_bytes(), "application/octet-stream")),
+            ("sign_files", ("THANKS.npy", thanks_path.read_bytes(), "application/octet-stream")),
+        ],
+        data={
+            "include_ksl": "true",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["text"] == "HELLO THANKS"
+    assert body["sign_count"] == 2
+    assert [item["source_kind"] for item in body["items"]] == [
+        "uploaded_landmark_file",
+        "uploaded_landmark_file",
+    ]
+    assert body["items"][0]["source_landmark_path"] is None
+
+
 def test_sign_to_text_route_returns_400_when_no_landmark_input() -> None:
     response = client.post("/api/v1/sign-to-text", json={})
 

@@ -101,7 +101,6 @@ def recognize_sign_sequence(request: SignSequenceToTextRequest) -> SignSequenceT
         raise ValueError("Provide at least one sign item for sign-sequence-to-text recognition.")
 
     item_results: list[SignToTextResponse] = []
-    labels: list[str] = []
 
     for item in request.items:
         item_result = recognize_sign(
@@ -114,22 +113,66 @@ def recognize_sign_sequence(request: SignSequenceToTextRequest) -> SignSequenceT
             )
         )
         item_results.append(item_result)
-        if item_result.label:
-            labels.append(item_result.label)
 
+    return _build_sign_sequence_response(
+        item_results,
+        include_ksl=request.include_ksl,
+        include_speech=request.include_speech,
+        voice_id=request.voice_id,
+        output_format=request.output_format,
+        session_id=request.session_id,
+    )
+
+
+def recognize_uploaded_sign_sequence(
+    requests: list[SignUploadToTextRequest],
+    *,
+    include_ksl: bool,
+    include_speech: bool,
+    voice_id: str | None,
+    output_format: str | None,
+    session_id: str | None,
+) -> SignSequenceToTextResponse:
+    if not requests:
+        raise ValueError("Provide at least one uploaded sign file for sign-sequence-to-text.")
+
+    item_results: list[SignToTextResponse] = []
+    for request in requests:
+        item_results.append(recognize_uploaded_sign(request))
+
+    return _build_sign_sequence_response(
+        item_results,
+        include_ksl=include_ksl,
+        include_speech=include_speech,
+        voice_id=voice_id,
+        output_format=output_format,
+        session_id=session_id,
+    )
+
+
+def _build_sign_sequence_response(
+    item_results: list[SignToTextResponse],
+    *,
+    include_ksl: bool,
+    include_speech: bool,
+    voice_id: str | None,
+    output_format: str | None,
+    session_id: str | None,
+) -> SignSequenceToTextResponse:
+    labels = [item_result.label for item_result in item_results if item_result.label]
     sequence_text = " ".join(labels).strip()
     normalized_text = sequence_text.lower()
     text_to_ksl = (
         map_text_to_ksl(TextToKslRequest(text=sequence_text))
-        if request.include_ksl and sequence_text
+        if include_ksl and sequence_text
         else None
     )
     speech = _maybe_synthesize_sign_speech(
         sequence_text,
-        include_speech=request.include_speech and bool(sequence_text),
-        voice_id=request.voice_id,
-        output_format=request.output_format,
-        session_id=request.session_id,
+        include_speech=include_speech and bool(sequence_text),
+        voice_id=voice_id,
+        output_format=output_format,
+        session_id=session_id,
     )
 
     if text_to_ksl is None or text_to_ksl.status == "ok":

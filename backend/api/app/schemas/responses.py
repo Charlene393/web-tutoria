@@ -13,6 +13,20 @@ class SpeechToTextResponse(BaseModel):
     status: str
 
 
+class ReadinessCheck(BaseModel):
+    ready: bool
+    required: bool = True
+    path: str | None = None
+    detail: str | None = None
+
+
+class HealthResponse(BaseModel):
+    status: str
+    app_name: str
+    app_version: str
+    checks: dict[str, ReadinessCheck]
+
+
 class TextToSpeechResponse(BaseModel):
     text: str
     audio_base64: str
@@ -111,6 +125,12 @@ class SignSequenceToTextResponse(BaseModel):
 
 class PhotoExplainResponse(BaseModel):
     object_name: str | None = None
+    normalized_object_name: str | None = None
     explanation: str
     suggested_sign: str | None = None
+    provider: str | None = None
+    source_kind: str | None = None
+    source_image_filename: str | None = None
+    text_to_ksl: TextToKslResponse | None = None
+    speech: TextToSpeechResponse | None = None
     status: str

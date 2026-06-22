@@ -89,6 +89,12 @@ Then open:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/api/v1/health`
 
+Before testing the backend flows, you can quickly check readiness with:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/health
+```
+
 ## Backend folder guide
 
 The FastAPI backend lives in `backend/api`.
@@ -208,8 +214,10 @@ The current backend is split like this:
 - `speech-to-text` is local with faster-whisper
 - `sign-to-text` is dataset-backed from cleaned `.npy` landmarks
 - `sign-sequence-to-text` combines multiple recognized signs into one sequence
+- `sign-sequence-to-text-upload` accepts multiple uploaded `.npy` sign files
 - `sign-to-text-upload` accepts uploaded `.npy` landmarks and optional sign videos
 - `sign-to-text` can now optionally synthesize recognized signs back to speech
+- `photo-explain-upload` explains an uploaded image and maps it into KSL lessons
 
 The current sign recognizer is intentionally narrowed to a bundled `v1` sign list in `backend/api/app/data/ksl_sign_v1_labels.json` and only keeps labels with at least `5` cleaned samples by default.
 
@@ -266,6 +274,13 @@ curl -X POST http://127.0.0.1:8000/api/v1/sign-sequence-to-text \
   }'
 ```
 
+To test multiple uploaded sign files in order:
+
+```bash
+cd backend/api
+bash test-sign-sequence-upload.sh true ./sequence.wav "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" "KSL-Dataset/Pose Data/Batch 2/76/Extract/Landmarks/WANT.npy" "KSL-Dataset/Pose Data/Batch 2/162/Extract/Landmarks/FOOD.npy"
+```
+
 If you want real uploaded sign video recognition too, install the optional backend extras from `backend/api`:
 
 ```bash
@@ -274,6 +289,13 @@ bash download-sign-video-model.sh
 ```
 
 On macOS, keep `.npy` landmark upload as the stable local path for now. Raw MediaPipe video extraction is more reliable in Linux-based environments.
+
+To test the new photo-explain backend flow:
+
+```bash
+cd backend/api
+bash test-photo-explain.sh "/Users/charlenembugua/Downloads/car.jpg" car true ./photo-explain.wav
+```
 
 ## Troubleshooting
 

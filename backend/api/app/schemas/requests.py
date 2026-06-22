@@ -58,6 +58,25 @@ class SignUploadToTextRequest(BaseModel):
     session_id: str | None = None
 
 
+class PhotoExplainUploadRequest(BaseModel):
+    filename: str | None = None
+    content_type: str | None = None
+    image_bytes: bytes
+    object_name: str | None = None
+    prompt: str | None = None
+    include_ksl: bool = True
+    include_speech: bool = False
+    voice_id: str | None = None
+    output_format: str | None = None
+    session_id: str | None = None
+
+
 class PhotoExplainRequest(BaseModel):
+    object_name: str | None = None
     image_url: str | None = None
     prompt: str | None = None
+    include_ksl: bool = True
+    include_speech: bool = False
+    voice_id: str | None = None
+    output_format: str | None = None
+    session_id: str | None = None
