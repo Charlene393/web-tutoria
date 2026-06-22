@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     sign_recognizer_min_samples_per_label: int = 5
     sign_recognizer_target_frames: int = 24
     sign_recognizer_default_top_k: int = 3
+    sign_video_target_fps: float = 8.0
+    sign_video_max_frames: int = 48
+    sign_video_model_complexity: int = 1
+    sign_video_min_detection_confidence: float = 0.5
+    sign_video_min_tracking_confidence: float = 0.5
     faster_whisper_model_size: str = "small"
     faster_whisper_device: str = "cpu"
     faster_whisper_compute_type: str = "int8"

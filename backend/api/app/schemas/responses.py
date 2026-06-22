@@ -72,11 +72,15 @@ class SignToTextResponse(BaseModel):
     text: str | None = None
     provider: str | None = None
     model_id: str | None = None
+    source_kind: str | None = None
     source_landmark_path: str | None = None
+    source_upload_filename: str | None = None
     matched_landmark_path: str | None = None
+    extracted_frame_count: int | None = None
     lesson_asset_id: str | None = None
     dataset_backed: bool = False
     top_matches: list[SignMatchCandidate] = Field(default_factory=list)
+    speech: TextToSpeechResponse | None = None
     status: str
 
 

@@ -26,6 +26,20 @@ class SignToTextRequest(BaseModel):
     lesson_asset_id: str | None = None
     video_url: str | None = None
     top_k: int = 3
+    include_speech: bool = False
+    voice_id: str | None = None
+    output_format: str | None = None
+    session_id: str | None = None
+
+
+class SignUploadToTextRequest(BaseModel):
+    filename: str | None = None
+    content_type: str | None = None
+    file_bytes: bytes
+    top_k: int = 3
+    include_speech: bool = False
+    voice_id: str | None = None
+    output_format: str | None = None
     session_id: str | None = None
 
 

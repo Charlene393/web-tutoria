@@ -134,6 +134,7 @@ You do not need heavy model tests first. Begin with API contract tests.
 - `POST /api/v1/speech-to-text`
 - `POST /api/v1/text-to-ksl`
 - `POST /api/v1/sign-to-text`
+- `POST /api/v1/sign-to-text-upload`
 - `POST /api/v1/photo-explain`
 
 ## Speech providers in this backend
@@ -155,6 +156,12 @@ These packages are now expected in `requirements-dev.txt`:
 - `python-multipart`
 
 `python-multipart` is needed for FastAPI file upload endpoints.
+
+If you want uploaded sign video recognition too, install the optional sign-video extras after the main setup:
+
+```bash
+pip install -r requirements-sign-video.txt
+```
 
 On macOS, Kokoro may also need:
 
@@ -325,21 +332,27 @@ What success looks like:
 
 ### Sign-to-text MVP flow
 
-This backend now supports a first sign-to-text MVP using `.npy` landmark files from your cleaned KSL dataset.
+This backend now supports a first sign-to-text MVP using either:
+
+- `.npy` landmark files from your cleaned KSL dataset
+- uploaded sign videos through MediaPipe landmark extraction
 
 What it does today:
 
 - loads a landmark sequence from `landmark_path`
+- accepts uploaded `.npy` landmark files at `POST /api/v1/sign-to-text-upload`
+- accepts uploaded sign videos such as `.mp4`, `.mov`, and `.webm` at `POST /api/v1/sign-to-text-upload`
 - builds or loads a local recognizer artifact from the cleaned manifest
 - restricts runtime recognition to the bundled `app/data/ksl_sign_v1_labels.json` starter vocabulary
 - keeps only labels with at least `5` cleaned samples by default
 - matches the sequence against cleaned dataset samples
 - returns the predicted label, confidence, and top candidate labels
+- can optionally synthesize speech from the recognized sign with Kokoro
 
 What it does not do yet:
 
 - webcam capture
-- raw video parsing
+- remote `video_url` fetching
 - live browser inference
 
 Build the recognizer artifact ahead of time if you want:
@@ -364,6 +377,48 @@ curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text \
   }'
 ```
 
+To test the reverse loop with speech output too:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy",
+    "top_k": 3,
+    "include_speech": true
+  }'
+```
+
+Or use the helper script from `backend/api`:
+
+```bash
+bash test-sign-speech.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" ./sign-me.wav 3
+```
+
+To test the new upload flow with the same `.npy` file:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text-upload \
+  -F "sign_file=@KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" \
+  -F "top_k=3"
+```
+
+To test with an uploaded sign video after installing `requirements-sign-video.txt`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text-upload \
+  -F "sign_file=@/absolute/path/to/sign-video.mp4" \
+  -F "top_k=3" \
+  -F "include_speech=true"
+```
+
+Or use the upload helper script from `backend/api`:
+
+```bash
+bash test-sign-upload.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" false
+bash test-sign-upload.sh "/absolute/path/to/sign-video.mp4" true ./sign-upload.wav 3
+```
+
 What success looks like:
 
 - `label` is predicted from the cleaned dataset
@@ -371,6 +426,8 @@ What success looks like:
 - `model_id` is `dataset-sign-knn-v1`
 - `matched_landmark_path` points to the closest cleaned sample
 - `top_matches` returns candidate labels for debugging
+- `source_kind` tells you whether the request came from a path, lesson asset, uploaded landmark file, or uploaded video
+- `speech.audio_base64` is present when `include_speech=true`
 
 You can also test it in the interactive docs at:
 

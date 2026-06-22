@@ -1,17 +1,46 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from io import BytesIO
+
+import numpy as np
+
 from ..core.config import settings
-from ..schemas.requests import SignToTextRequest
-from ..schemas.responses import SignMatchCandidate, SignToTextResponse
+from ..integrations.mediapipe_sign_client import (
+    extract_landmark_sequence_from_video_bytes,
+    is_supported_sign_video_filename,
+)
+from ..schemas.requests import (
+    SignToTextRequest,
+    SignUploadToTextRequest,
+    TextToSpeechRequest,
+)
+from ..schemas.responses import SignMatchCandidate, SignToTextResponse, TextToSpeechResponse
 from .sign_recognizer import (
+    SIGN_RECOGNIZER_MODEL_ID,
+    SignPredictionResult,
     _load_lesson_asset_lookup,
     predict_sign_from_landmark_path,
+    predict_sign_from_sequence,
     resolve_project_path,
 )
+from .speech_service import synthesize_speech
+
+
+@dataclass(frozen=True)
+class PreparedSignSource:
+    source_kind: str
+    source_landmark_path: str | None = None
+    source_upload_filename: str | None = None
+    extracted_frame_count: int | None = None
+
 
 def recognize_sign(request: SignToTextRequest) -> SignToTextResponse:
     if request.video_url:
         raise ValueError(
-            "video_url sign recognition is not connected yet. "
-            "Use landmark_path or lesson_asset_id for the backend MVP."
+            "Remote video_url sign recognition is not connected yet. "
+            "Upload a video file to `/api/v1/sign-to-text-upload` or provide "
+            "`landmark_path` or `lesson_asset_id`."
         )
 
     landmark_path_value = _resolve_request_landmark_path(request)
@@ -23,17 +52,115 @@ def recognize_sign(request: SignToTextRequest) -> SignToTextResponse:
 
     prediction = predict_sign_from_landmark_path(
         landmark_path,
-        top_k=max(1, request.top_k or settings.sign_recognizer_default_top_k),
+        top_k=_resolve_top_k(request.top_k),
+    )
+    source_kind = "lesson_asset_id" if request.lesson_asset_id else "landmark_path"
+    return _build_sign_response(
+        prediction,
+        source=PreparedSignSource(
+            source_kind=source_kind,
+            source_landmark_path=landmark_path_value,
+        ),
+        include_speech=request.include_speech,
+        voice_id=request.voice_id,
+        output_format=request.output_format,
+        session_id=request.session_id,
+    )
+
+
+def recognize_uploaded_sign(request: SignUploadToTextRequest) -> SignToTextResponse:
+    if not request.file_bytes:
+        raise ValueError("Uploaded sign file is empty.")
+
+    sequence, source = _load_uploaded_sign_sequence(request)
+    prediction = predict_sign_from_sequence(
+        sequence,
+        top_k=_resolve_top_k(request.top_k),
+    )
+    return _build_sign_response(
+        prediction,
+        source=source,
+        include_speech=request.include_speech,
+        voice_id=request.voice_id,
+        output_format=request.output_format,
+        session_id=request.session_id,
+    )
+
+
+def _load_uploaded_sign_sequence(
+    request: SignUploadToTextRequest,
+) -> tuple[np.ndarray, PreparedSignSource]:
+    filename = (request.filename or "").strip() or None
+    content_type = (request.content_type or "").strip().lower()
+
+    if _is_npy_upload(filename, content_type):
+        sequence = _load_uploaded_landmark_sequence(request.file_bytes)
+        return sequence, PreparedSignSource(
+            source_kind="uploaded_landmark_file",
+            source_upload_filename=filename,
+            extracted_frame_count=int(len(sequence)),
+        )
+
+    if _is_video_upload(filename, content_type):
+        sequence = extract_landmark_sequence_from_video_bytes(
+            request.file_bytes,
+            filename=filename,
+        )
+        return sequence, PreparedSignSource(
+            source_kind="uploaded_video",
+            source_upload_filename=filename,
+            extracted_frame_count=int(len(sequence)),
+        )
+
+    raise ValueError(
+        "Unsupported uploaded sign file. Use a `.npy` landmark file or a video file "
+        "such as `.mp4`, `.mov`, `.webm`, `.m4v`, `.mkv`, or `.avi`."
+    )
+
+
+def _load_uploaded_landmark_sequence(file_bytes: bytes) -> np.ndarray:
+    try:
+        sequence = np.load(BytesIO(file_bytes), allow_pickle=True)
+    except Exception as exc:
+        raise ValueError(f"Unable to load the uploaded landmark .npy file: {exc}") from exc
+
+    normalized_sequence = np.asarray(sequence, dtype=object)
+    if normalized_sequence.ndim == 0:
+        raise ValueError("Uploaded landmark file did not contain a frame sequence.")
+    if len(normalized_sequence) == 0:
+        raise ValueError("Uploaded landmark file is empty.")
+    return normalized_sequence
+
+
+def _build_sign_response(
+    prediction: SignPredictionResult,
+    *,
+    source: PreparedSignSource,
+    include_speech: bool,
+    voice_id: str | None,
+    output_format: str | None,
+    session_id: str | None,
+) -> SignToTextResponse:
+    recognized_text = prediction.label
+    speech = _maybe_synthesize_sign_speech(
+        recognized_text,
+        include_speech=include_speech,
+        voice_id=voice_id,
+        output_format=output_format,
+        session_id=session_id,
     )
 
     return SignToTextResponse(
         label=prediction.label,
         confidence=prediction.confidence,
-        text=prediction.label,
+        text=recognized_text,
         provider="dataset_knn",
-        model_id="dataset-sign-knn-v1",
-        source_landmark_path=landmark_path_value,
+        model_id=SIGN_RECOGNIZER_MODEL_ID,
+        source_kind=source.source_kind,
+        source_landmark_path=source.source_landmark_path,
+        source_upload_filename=source.source_upload_filename,
         matched_landmark_path=prediction.matched_landmark_path,
+        extracted_frame_count=source.extracted_frame_count,
         lesson_asset_id=prediction.lesson_asset_id,
         dataset_backed=True,
         top_matches=[
@@ -45,7 +172,30 @@ def recognize_sign(request: SignToTextRequest) -> SignToTextResponse:
             )
             for match in prediction.top_matches
         ],
+        speech=speech,
         status="ok",
+    )
+
+
+def _maybe_synthesize_sign_speech(
+    text: str,
+    *,
+    include_speech: bool,
+    voice_id: str | None,
+    output_format: str | None,
+    session_id: str | None,
+) -> TextToSpeechResponse | None:
+    if not include_speech:
+        return None
+
+    return synthesize_speech(
+        TextToSpeechRequest(
+            text=text,
+            voice_id=voice_id,
+            output_format=output_format,
+            include_ksl=False,
+            session_id=session_id,
+        )
     )
 
 
@@ -64,3 +214,19 @@ def _resolve_request_landmark_path(request: SignToTextRequest) -> str:
         raise ValueError(f"lesson_asset_id not found in lesson catalog: {request.lesson_asset_id}")
 
     raise ValueError("Provide landmark_path or lesson_asset_id for sign-to-text recognition.")
+
+
+def _resolve_top_k(top_k: int | None) -> int:
+    return max(1, top_k or settings.sign_recognizer_default_top_k)
+
+
+def _is_npy_upload(filename: str | None, content_type: str) -> bool:
+    if filename and filename.lower().endswith(".npy"):
+        return True
+    return content_type in {"application/x-npy", "application/npy"}
+
+
+def _is_video_upload(filename: str | None, content_type: str) -> bool:
+    if content_type.startswith("video/"):
+        return True
+    return is_supported_sign_video_filename(filename)

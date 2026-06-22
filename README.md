@@ -207,6 +207,8 @@ The current backend is split like this:
 - `text-to-speech` is local and free with Kokoro
 - `speech-to-text` is local with faster-whisper
 - `sign-to-text` is dataset-backed from cleaned `.npy` landmarks
+- `sign-to-text-upload` accepts uploaded `.npy` landmarks and optional sign videos
+- `sign-to-text` can now optionally synthesize recognized signs back to speech
 
 The current sign recognizer is intentionally narrowed to a bundled `v1` sign list in `backend/api/app/data/ksl_sign_v1_labels.json` and only keeps labels with at least `5` cleaned samples by default.
 
@@ -228,8 +230,29 @@ curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text \
   -H "Content-Type: application/json" \
   -d '{
     "landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy",
-    "top_k": 3
+    "top_k": 3,
+    "include_speech": true
   }'
+```
+
+To save the returned sign speech audio directly to a local WAV file:
+
+```bash
+cd backend/api
+bash test-sign-speech.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" ./sign-me.wav 3
+```
+
+To test the new upload endpoint with the same landmark file:
+
+```bash
+cd backend/api
+bash test-sign-upload.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" false
+```
+
+If you want real uploaded sign video recognition too, install the optional backend extras from `backend/api`:
+
+```bash
+pip install -r requirements-sign-video.txt
 ```
 
 ## Troubleshooting

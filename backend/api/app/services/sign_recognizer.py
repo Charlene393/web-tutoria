@@ -14,6 +14,7 @@ import numpy as np
 from ..core.config import settings
 from .sign_features import (
     SIGN_FEATURE_VERSION,
+    extract_sign_feature_vector,
     extract_sign_feature_vector_from_path,
 )
 
@@ -198,6 +199,48 @@ def predict_sign_from_landmark_path(
     query_features, _ = extract_sign_feature_vector_from_path(
         landmark_path,
         target_frames=recognizer.target_frames,
+    )
+    return predict_sign_from_feature_vector(
+        query_features,
+        top_k=top_k,
+        artifact_path=artifact_path,
+        manifest_path=manifest_path,
+    )
+
+
+def predict_sign_from_sequence(
+    sequence: np.ndarray,
+    *,
+    top_k: int,
+    artifact_path: Path | None = None,
+    manifest_path: Path | None = None,
+) -> SignPredictionResult:
+    recognizer = load_sign_recognizer(
+        artifact_path=artifact_path,
+        manifest_path=manifest_path,
+    )
+    query_features, _ = extract_sign_feature_vector(
+        sequence,
+        target_frames=recognizer.target_frames,
+    )
+    return predict_sign_from_feature_vector(
+        query_features,
+        top_k=top_k,
+        artifact_path=artifact_path,
+        manifest_path=manifest_path,
+    )
+
+
+def predict_sign_from_feature_vector(
+    query_features: np.ndarray,
+    *,
+    top_k: int,
+    artifact_path: Path | None = None,
+    manifest_path: Path | None = None,
+) -> SignPredictionResult:
+    recognizer = load_sign_recognizer(
+        artifact_path=artifact_path,
+        manifest_path=manifest_path,
     )
     similarities = recognizer.features @ query_features
     if similarities.size == 0:
