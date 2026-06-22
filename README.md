@@ -207,6 +207,7 @@ The current backend is split like this:
 - `text-to-speech` is local and free with Kokoro
 - `speech-to-text` is local with faster-whisper
 - `sign-to-text` is dataset-backed from cleaned `.npy` landmarks
+- `sign-sequence-to-text` combines multiple recognized signs into one sequence
 - `sign-to-text-upload` accepts uploaded `.npy` landmarks and optional sign videos
 - `sign-to-text` can now optionally synthesize recognized signs back to speech
 
@@ -249,11 +250,30 @@ cd backend/api
 bash test-sign-upload.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" false
 ```
 
+To test multiple signs as a single backend sequence:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-sequence-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy"},
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/76/Extract/Landmarks/WANT.npy"},
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/162/Extract/Landmarks/FOOD.npy"}
+    ],
+    "include_ksl": true,
+    "include_speech": true
+  }'
+```
+
 If you want real uploaded sign video recognition too, install the optional backend extras from `backend/api`:
 
 ```bash
 pip install -r requirements-sign-video.txt
+bash download-sign-video-model.sh
 ```
+
+On macOS, keep `.npy` landmark upload as the stable local path for now. Raw MediaPipe video extraction is more reliable in Linux-based environments.
 
 ## Troubleshooting
 

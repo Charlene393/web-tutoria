@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     sign_video_model_complexity: int = 1
     sign_video_min_detection_confidence: float = 0.5
     sign_video_min_tracking_confidence: float = 0.5
+    sign_video_mediapipe_model_path: str | None = None
     faster_whisper_model_size: str = "small"
     faster_whisper_device: str = "cpu"
     faster_whisper_compute_type: str = "int8"

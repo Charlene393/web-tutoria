@@ -11,11 +11,19 @@ from ..integrations.mediapipe_sign_client import (
     is_supported_sign_video_filename,
 )
 from ..schemas.requests import (
+    SignSequenceToTextRequest,
     SignToTextRequest,
     SignUploadToTextRequest,
+    TextToKslRequest,
     TextToSpeechRequest,
 )
-from ..schemas.responses import SignMatchCandidate, SignToTextResponse, TextToSpeechResponse
+from ..schemas.responses import (
+    SignMatchCandidate,
+    SignSequenceItemResponse,
+    SignSequenceToTextResponse,
+    SignToTextResponse,
+    TextToSpeechResponse,
+)
 from .sign_recognizer import (
     SIGN_RECOGNIZER_MODEL_ID,
     SignPredictionResult,
@@ -25,6 +33,7 @@ from .sign_recognizer import (
     resolve_project_path,
 )
 from .speech_service import synthesize_speech
+from .text_to_ksl_service import map_text_to_ksl
 
 
 @dataclass(frozen=True)
@@ -84,6 +93,74 @@ def recognize_uploaded_sign(request: SignUploadToTextRequest) -> SignToTextRespo
         voice_id=request.voice_id,
         output_format=request.output_format,
         session_id=request.session_id,
+    )
+
+
+def recognize_sign_sequence(request: SignSequenceToTextRequest) -> SignSequenceToTextResponse:
+    if not request.items:
+        raise ValueError("Provide at least one sign item for sign-sequence-to-text recognition.")
+
+    item_results: list[SignToTextResponse] = []
+    labels: list[str] = []
+
+    for item in request.items:
+        item_result = recognize_sign(
+            SignToTextRequest(
+                landmark_path=item.landmark_path,
+                lesson_asset_id=item.lesson_asset_id,
+                top_k=request.top_k,
+                include_speech=False,
+                session_id=request.session_id,
+            )
+        )
+        item_results.append(item_result)
+        if item_result.label:
+            labels.append(item_result.label)
+
+    sequence_text = " ".join(labels).strip()
+    normalized_text = sequence_text.lower()
+    text_to_ksl = (
+        map_text_to_ksl(TextToKslRequest(text=sequence_text))
+        if request.include_ksl and sequence_text
+        else None
+    )
+    speech = _maybe_synthesize_sign_speech(
+        sequence_text,
+        include_speech=request.include_speech and bool(sequence_text),
+        voice_id=request.voice_id,
+        output_format=request.output_format,
+        session_id=request.session_id,
+    )
+
+    if text_to_ksl is None or text_to_ksl.status == "ok":
+        status = "ok"
+    else:
+        status = "partial"
+
+    return SignSequenceToTextResponse(
+        text=sequence_text,
+        normalized_text=normalized_text,
+        sign_count=len(item_results),
+        items=[
+            SignSequenceItemResponse(
+                index=index,
+                label=item_result.label,
+                confidence=item_result.confidence,
+                text=item_result.text,
+                source_kind=item_result.source_kind,
+                source_landmark_path=item_result.source_landmark_path,
+                matched_landmark_path=item_result.matched_landmark_path,
+                lesson_asset_id=item_result.lesson_asset_id,
+                top_matches=item_result.top_matches,
+                status=item_result.status,
+            )
+            for index, item_result in enumerate(item_results)
+        ],
+        provider="dataset_knn",
+        model_id="dataset-sign-sequence-v1",
+        text_to_ksl=text_to_ksl,
+        speech=speech,
+        status=status,
     )
 
 

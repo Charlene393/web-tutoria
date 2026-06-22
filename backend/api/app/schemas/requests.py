@@ -32,6 +32,21 @@ class SignToTextRequest(BaseModel):
     session_id: str | None = None
 
 
+class SignSequenceItemRequest(BaseModel):
+    landmark_path: str | None = None
+    lesson_asset_id: str | None = None
+
+
+class SignSequenceToTextRequest(BaseModel):
+    items: list[SignSequenceItemRequest]
+    top_k: int = 3
+    include_speech: bool = False
+    include_ksl: bool = True
+    voice_id: str | None = None
+    output_format: str | None = None
+    session_id: str | None = None
+
+
 class SignUploadToTextRequest(BaseModel):
     filename: str | None = None
     content_type: str | None = None

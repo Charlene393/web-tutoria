@@ -4,9 +4,12 @@ from fastapi import Form
 from fastapi import HTTPException
 from fastapi import UploadFile
 
+from ...schemas.requests import SignSequenceToTextRequest
 from ...schemas.requests import SignToTextRequest
 from ...schemas.requests import SignUploadToTextRequest
+from ...schemas.responses import SignSequenceToTextResponse
 from ...schemas.responses import SignToTextResponse
+from ...services.sign_to_text_service import recognize_sign_sequence
 from ...services.sign_to_text_service import recognize_sign
 from ...services.sign_to_text_service import recognize_uploaded_sign
 
@@ -17,6 +20,16 @@ router = APIRouter(tags=["sign-to-text"])
 def sign_to_text(request: SignToTextRequest) -> SignToTextResponse:
     try:
         return recognize_sign(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.post("/sign-sequence-to-text", response_model=SignSequenceToTextResponse)
+def sign_sequence_to_text(request: SignSequenceToTextRequest) -> SignSequenceToTextResponse:
+    try:
+        return recognize_sign_sequence(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

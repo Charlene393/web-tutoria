@@ -134,6 +134,7 @@ You do not need heavy model tests first. Begin with API contract tests.
 - `POST /api/v1/speech-to-text`
 - `POST /api/v1/text-to-ksl`
 - `POST /api/v1/sign-to-text`
+- `POST /api/v1/sign-sequence-to-text`
 - `POST /api/v1/sign-to-text-upload`
 - `POST /api/v1/photo-explain`
 
@@ -163,6 +164,17 @@ If you want uploaded sign video recognition too, install the optional sign-video
 pip install -r requirements-sign-video.txt
 ```
 
+Then download the MediaPipe holistic model once:
+
+```bash
+bash download-sign-video-model.sh
+```
+
+Note for macOS:
+
+- uploaded `.npy` landmark files are the stable local path
+- MediaPipe task-based video landmark extraction is currently safer on Linux than on macOS in this backend setup
+
 On macOS, Kokoro may also need:
 
 ```bash
@@ -176,6 +188,7 @@ This repo pins a Kokoro version that is meant to install cleanly in the current 
 Add these values to `backend/api/.env`:
 
 ```env
+SIGN_VIDEO_MEDIAPIPE_MODEL_PATH=app/data/holistic_landmarker.task
 FASTER_WHISPER_MODEL_SIZE=small
 FASTER_WHISPER_DEVICE=cpu
 FASTER_WHISPER_COMPUTE_TYPE=int8
@@ -335,11 +348,13 @@ What success looks like:
 This backend now supports a first sign-to-text MVP using either:
 
 - `.npy` landmark files from your cleaned KSL dataset
+- multiple single-sign inputs combined through `POST /api/v1/sign-sequence-to-text`
 - uploaded sign videos through MediaPipe landmark extraction
 
 What it does today:
 
 - loads a landmark sequence from `landmark_path`
+- combines multiple sign recognitions into a sentence-like text sequence
 - accepts uploaded `.npy` landmark files at `POST /api/v1/sign-to-text-upload`
 - accepts uploaded sign videos such as `.mp4`, `.mov`, and `.webm` at `POST /api/v1/sign-to-text-upload`
 - builds or loads a local recognizer artifact from the cleaned manifest
@@ -406,17 +421,37 @@ curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text-upload \
 To test with an uploaded sign video after installing `requirements-sign-video.txt`:
 
 ```bash
+bash download-sign-video-model.sh
 curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text-upload \
   -F "sign_file=@/absolute/path/to/sign-video.mp4" \
   -F "top_k=3" \
   -F "include_speech=true"
 ```
 
+If you are testing on macOS and the backend reports that MediaPipe tasks are not stable in this environment, use the `.npy` upload flow locally and reserve raw video extraction for Linux or a later frontend-side capture pipeline.
+
 Or use the upload helper script from `backend/api`:
 
 ```bash
 bash test-sign-upload.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" false
 bash test-sign-upload.sh "/absolute/path/to/sign-video.mp4" true ./sign-upload.wav 3
+```
+
+To test multiple signs as one sentence:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-sequence-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy"},
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/76/Extract/Landmarks/WANT.npy"},
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/162/Extract/Landmarks/FOOD.npy"}
+    ],
+    "top_k": 3,
+    "include_ksl": true,
+    "include_speech": true
+  }'
 ```
 
 What success looks like:
@@ -428,6 +463,7 @@ What success looks like:
 - `top_matches` returns candidate labels for debugging
 - `source_kind` tells you whether the request came from a path, lesson asset, uploaded landmark file, or uploaded video
 - `speech.audio_base64` is present when `include_speech=true`
+- `sign-sequence-to-text` returns combined `text`, per-sign `items`, and optional `text_to_ksl` for the full sequence
 
 You can also test it in the interactive docs at:
 

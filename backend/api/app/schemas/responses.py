@@ -84,6 +84,31 @@ class SignToTextResponse(BaseModel):
     status: str
 
 
+class SignSequenceItemResponse(BaseModel):
+    index: int
+    label: str | None = None
+    confidence: float | None = None
+    text: str | None = None
+    source_kind: str | None = None
+    source_landmark_path: str | None = None
+    matched_landmark_path: str | None = None
+    lesson_asset_id: str | None = None
+    top_matches: list[SignMatchCandidate] = Field(default_factory=list)
+    status: str
+
+
+class SignSequenceToTextResponse(BaseModel):
+    text: str
+    normalized_text: str
+    sign_count: int
+    items: list[SignSequenceItemResponse] = Field(default_factory=list)
+    provider: str | None = None
+    model_id: str | None = None
+    text_to_ksl: TextToKslResponse | None = None
+    speech: TextToSpeechResponse | None = None
+    status: str
+
+
 class PhotoExplainResponse(BaseModel):
     object_name: str | None = None
     explanation: str
