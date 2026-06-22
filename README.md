@@ -45,6 +45,9 @@ bash start-dev.sh
 
 Use that flow exactly if you are setting the project up for the first time.
 
+After the backend starts, use [backend/api/DEMO_CHECKLIST.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_CHECKLIST.md) to verify every stable endpoint in the right order.
+When you need concrete frontend-facing payload examples, use [backend/api/DEMO_RESPONSES.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_RESPONSES.md).
+
 ### 1. Clone the repository
 
 ```bash

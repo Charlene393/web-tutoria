@@ -25,6 +25,9 @@ bash start-dev.sh
 
 That is the main supported local dev flow for this backend.
 
+For the full backend verification flow after setup, use [DEMO_CHECKLIST.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_CHECKLIST.md).
+For approved sample request and response payloads, use [DEMO_RESPONSES.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_RESPONSES.md).
+
 Important: because Kokoro is used for local text-to-speech, this backend currently needs Python `3.11` or `3.12`. Python `3.13` will not install the Kokoro stack correctly.
 
 Then open:
