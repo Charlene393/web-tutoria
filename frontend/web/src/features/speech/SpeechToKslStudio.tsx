@@ -77,8 +77,10 @@ export function SpeechToKslStudio() {
 
   const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
   const animationRef = useRef<number | null>(null);
+  const thinkingPreviewTimeoutRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
   const playheadMsRef = useRef(0);
+  const [isThinkingPreview, setIsThinkingPreview] = useState(false);
 
   const activeClip = clip ?? FALLBACK_CLIP;
   const hasResolvedClip = Boolean(clip);
@@ -148,6 +150,14 @@ export function SpeechToKslStudio() {
       }
     };
   }, [clipDuration, cycleDuration, frameDuration, isPlaying]);
+
+  useEffect(() => {
+    return () => {
+      if (thinkingPreviewTimeoutRef.current !== null) {
+        window.clearTimeout(thinkingPreviewTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const runPipeline = useCallback(async (text: string) => {
     const normalizedText = text.trim();
@@ -256,10 +266,25 @@ export function SpeechToKslStudio() {
     void runPipeline(manualInput);
   }, [manualInput, runPipeline]);
 
+  const testThinkingAnimation = useCallback(() => {
+    if (thinkingPreviewTimeoutRef.current !== null) {
+      window.clearTimeout(thinkingPreviewTimeoutRef.current);
+    }
+
+    setIsThinkingPreview(true);
+    thinkingPreviewTimeoutRef.current = window.setTimeout(() => {
+      setIsThinkingPreview(false);
+      thinkingPreviewTimeoutRef.current = null;
+    }, 2200);
+  }, []);
+
   const isBusy = status === "processing";
   const isListening = status === "listening";
   const hasSpeechInput = Boolean((transcript || interimTranscript).trim());
   const glossPlaceholder = hasSpeechInput ? ["Waiting for KSL"] : [];
+
+  const showVoiceAnimation = isBusy || isThinkingPreview;
+  const showTranscript = !isThinkingPreview && status === "ready" && Boolean(transcript.trim());
 
   return (
     <main className="voice-shell">
@@ -274,7 +299,24 @@ export function SpeechToKslStudio() {
 
           <div className="voice-readout" aria-live="polite">
             <span className="voice-label">Transcript</span>
-            <p>{transcript || interimTranscript || "Waiting for speech input..."}</p>
+            {showVoiceAnimation ? (
+              <div className="voice-thinking" role="status" aria-label="Thinking indicator">
+                <span className="voice-thinking-label">Thinking</span>
+                <span className="voice-wave" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+            ) : (
+              <p>{showTranscript ? transcript : ""}</p>
+            )}
           </div>
 
           <div className="gloss-row" aria-label="KSL gloss output">
@@ -309,6 +351,15 @@ export function SpeechToKslStudio() {
                 <span>Convert</span>
               </button>
             </form>
+
+            <button
+              type="button"
+              className="primary-button"
+              onClick={testThinkingAnimation}
+              disabled={isBusy || isListening || isThinkingPreview}
+            >
+              <span>Test Thinking Animation</span>
+            </button>
           </div>
 
           <div className="pipeline-state" role={status === "error" ? "alert" : "status"}>

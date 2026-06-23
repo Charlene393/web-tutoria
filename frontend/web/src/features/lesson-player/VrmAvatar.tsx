@@ -30,6 +30,25 @@ const FINGER_LERP_SPEED = 14;
 const DEFAULT_REST_LOCAL = new THREE.Vector3(0, 1, 0);
 const CROSS_BODY_MARGIN = 0.08;
 
+function pushInFrontOfPlane(
+  point: THREE.Vector3,
+  planeOrigin: THREE.Vector3,
+  planeNormal: THREE.Vector3,
+  minDistance: number,
+) {
+  if (planeNormal.lengthSq() < 1e-6) {
+    return point;
+  }
+
+  const normalizedNormal = planeNormal.clone().normalize();
+  const signedDistance = point.clone().sub(planeOrigin).dot(normalizedNormal);
+  if (signedDistance >= minDistance) {
+    return point;
+  }
+
+  return point.clone().add(normalizedNormal.multiplyScalar(minDistance - signedDistance));
+}
+
 function pushOutsideSphere(
   point: THREE.Vector3,
   center: THREE.Vector3,
@@ -288,12 +307,21 @@ export function VrmAvatar({
     if (isAnimating) {
       const torsoCenter = rig.chest.clone().lerp(rig.hips, 0.42);
       const headCenter = rig.head.clone().add(new THREE.Vector3(0, 0.08, 0));
-      const torsoRadius = Math.max(0.22, rig.shoulderWidth * 0.34);
+      const torsoRadius = Math.max(0.26, rig.shoulderWidth * 0.4);
       const headRadius = Math.max(0.12, rig.shoulderWidth * 0.16);
       const chestCapsuleStart = rig.chest.clone().add(new THREE.Vector3(0, 0.06, 0));
       const chestCapsuleEnd = rig.chest.clone().add(new THREE.Vector3(0, -0.24, 0));
-      const chestElbowRadius = Math.max(0.19, rig.shoulderWidth * 0.28);
-      const chestWristRadius = Math.max(0.23, rig.shoulderWidth * 0.34);
+      const chestElbowRadius = Math.max(0.24, rig.shoulderWidth * 0.34);
+      const chestWristRadius = Math.max(0.28, rig.shoulderWidth * 0.4);
+
+      const shoulderAxis = rig.rightShoulder.clone().sub(rig.leftShoulder);
+      const torsoUp = rig.chest.clone().sub(rig.hips);
+      const chestForward = shoulderAxis
+        .clone()
+        .cross(torsoUp)
+        .normalize();
+      const elbowPlaneDistance = Math.max(0.03, rig.shoulderWidth * 0.05);
+      const wristPlaneDistance = Math.max(0.06, rig.shoulderWidth * 0.08);
 
       let leftElbowPoint = pushOutsideSphere(
         rig.leftElbow,
@@ -323,6 +351,19 @@ export function VrmAvatar({
         new THREE.Vector3(-1, 0, 0),
       );
 
+      leftElbowPoint = pushInFrontOfPlane(
+        leftElbowPoint,
+        rig.chest,
+        chestForward,
+        elbowPlaneDistance,
+      );
+      rightElbowPoint = pushInFrontOfPlane(
+        rightElbowPoint,
+        rig.chest,
+        chestForward,
+        elbowPlaneDistance,
+      );
+
       let leftWristPoint = pushOutsideSphere(
         rig.leftWrist,
         torsoCenter,
@@ -349,6 +390,19 @@ export function VrmAvatar({
         chestCapsuleEnd,
         chestWristRadius,
         new THREE.Vector3(-1, 0, 0),
+      );
+
+      leftWristPoint = pushInFrontOfPlane(
+        leftWristPoint,
+        rig.chest,
+        chestForward,
+        wristPlaneDistance,
+      );
+      rightWristPoint = pushInFrontOfPlane(
+        rightWristPoint,
+        rig.chest,
+        chestForward,
+        wristPlaneDistance,
       );
 
       leftWristPoint = pushOutsideSphere(
