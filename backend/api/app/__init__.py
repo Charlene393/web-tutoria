@@ -1,1 +1,1 @@
-"""Web Tutoria API package."""
+"""Web Tutoria API application package."""

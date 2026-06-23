@@ -5,6 +5,7 @@ Web Tutoria is an AI learning system for Kenyan Sign Language (KSL).
 The project is being built around three core flows:
 
 - speech -> text -> KSL lesson or sign playback
+- text -> speech + KSL lesson playback
 - signer video or webcam -> text -> speech
 - photo upload -> explanation -> matching KSL lesson
 
@@ -13,19 +14,18 @@ The project is being built around three core flows:
 ```text
 backend/
   api/                 FastAPI backend
+  scripts/             dataset cleanup and analysis scripts
 frontend/
   web/                 frontend app shell
 KSL-Dataset/
   Pose Data/           local pose and landmark dataset
-scripts/
-  analyze_ksl_dataset.py
 ```
 
 ## Prerequisites
 
 Install these before setup:
 
-- Python `3.11+`
+- Python `3.11` or `3.12`
 - Git
 
 Frontend tooling can be added later when the web app is bootstrapped.
@@ -38,15 +38,15 @@ If you only want the backend running, use this full copy-paste flow:
 git clone <your-repo-url>
 cd web-tutoria
 cd backend/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements-dev.txt
+bash setup-venv.sh
 cp .env.example .env
 bash start-dev.sh
 ```
 
 Use that flow exactly if you are setting the project up for the first time.
+
+After the backend starts, use [backend/api/DEMO_CHECKLIST.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_CHECKLIST.md) to verify every stable endpoint in the right order.
+When you need concrete frontend-facing payload examples, use [backend/api/DEMO_RESPONSES.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_RESPONSES.md).
 
 ### 1. Clone the repository
 
@@ -59,16 +59,12 @@ cd web-tutoria
 
 ```bash
 cd backend/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
+bash setup-venv.sh
 ```
 
 ### 3. Install backend dependencies
 
-```bash
-pip install -r requirements-dev.txt
-```
+This is handled by `setup-venv.sh`.
 
 ### 4. Create backend environment variables
 
@@ -96,6 +92,12 @@ Then open:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/api/v1/health`
 
+Before testing the backend flows, you can quickly check readiness with:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/health
+```
+
 ## Backend folder guide
 
 The FastAPI backend lives in `backend/api`.
@@ -115,6 +117,7 @@ backend/api/
   tests/              backend tests
   .env.example
   pyproject.toml
+  setup-venv.sh
 ```
 
 ## Dataset note
@@ -130,8 +133,21 @@ If someone clones the repo and the dataset is not present, they need to copy it 
 You can inspect the dataset with:
 
 ```bash
-python3 scripts/analyze_ksl_dataset.py
+backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
+backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
+backend/api/.venv/bin/python backend/scripts/prefill_cleanup_decisions.py
+backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
+backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
 ```
+
+That workflow creates review files in:
+
+```text
+backend/reports/ksl_cleanup/
+```
+
+Use `cleanup_decisions.csv` as the manual sheet for `keep`, `rename`, `merge`, or `drop` decisions before changing anything in the raw dataset.
+After that, use `backend/api/app/data/ksl_lesson_catalog.json` as the backend lesson source of truth.
 
 ## Current dataset snapshot
 
@@ -139,11 +155,11 @@ From the current local dataset audit:
 
 - `2` batches
 - `40` signer folders
-- `728` unique labels
+- `727` unique labels
 - `1495` landmark samples
 - median samples per label: `1`
-- labels with only `1` sample: `473`
-- labels with fewer than `3` samples: `600`
+- labels with only `1` sample: `472`
+- labels with fewer than `3` samples: `598`
 
 This means the current dataset is better suited to a curated vocabulary tutor first, rather than a broad sentence-level KSL translation model.
 
@@ -168,7 +184,120 @@ pip install -r requirements-dev.txt
 Run the dataset audit:
 
 ```bash
-python3 scripts/analyze_ksl_dataset.py
+backend/api/.venv/bin/python backend/scripts/generate_ksl_cleanup_reports.py
+backend/api/.venv/bin/python backend/scripts/build_cleanup_decisions_template.py
+backend/api/.venv/bin/python backend/scripts/prefill_cleanup_decisions.py
+backend/api/.venv/bin/python backend/scripts/apply_cleanup_decisions_to_manifest.py
+backend/api/.venv/bin/python backend/scripts/build_ksl_lesson_catalog.py
+```
+
+Test speech-to-text with faster-whisper after installing the backend dependencies:
+
+```bash
+bash warmup-stt.sh
+curl -X POST http://127.0.0.1:8000/api/v1/speech-to-text \
+  -F "audio=@/absolute/path/to/sample.wav" \
+  -F "include_ksl=true"
+```
+
+Test text-to-speech with Kokoro after installing the backend dependencies:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/text-to-speech \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "I want food",
+    "include_ksl": true
+  }'
+```
+
+The current backend is split like this:
+
+- `text-to-speech` is local and free with Kokoro
+- `speech-to-text` is local with faster-whisper
+- `sign-to-text` is dataset-backed from cleaned `.npy` landmarks
+- `sign-sequence-to-text` combines multiple recognized signs into one sequence
+- `sign-sequence-to-text-upload` accepts multiple uploaded `.npy` sign files
+- `sign-to-text-upload` accepts uploaded `.npy` landmarks and optional sign videos
+- `sign-to-text` can now optionally synthesize recognized signs back to speech
+- `photo-explain-upload` explains an uploaded image and maps it into KSL lessons
+
+The current sign recognizer is intentionally narrowed to a bundled `v1` sign list in `backend/api/app/data/ksl_sign_v1_labels.json` and only keeps labels with at least `5` cleaned samples by default.
+
+On the first speech-to-text run, `faster-whisper` downloads its model from Hugging Face. Run `bash warmup-stt.sh` once while you are online so later requests can use the local cache.
+
+If a previous `pip install -r requirements-dev.txt` failed during the Kokoro setup, pull the latest backend changes and run the install again before testing TTS.
+
+If you previously created `.venv` with Python `3.13`, rebuild it from `backend/api` with:
+
+```bash
+bash setup-venv.sh
+```
+
+Test sign-to-text against a cleaned landmark file:
+
+```bash
+backend/api/.venv/bin/python backend/scripts/train_sign_classifier.py
+curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy",
+    "top_k": 3,
+    "include_speech": true
+  }'
+```
+
+To save the returned sign speech audio directly to a local WAV file:
+
+```bash
+cd backend/api
+bash test-sign-speech.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" ./sign-me.wav 3
+```
+
+To test the new upload endpoint with the same landmark file:
+
+```bash
+cd backend/api
+bash test-sign-upload.sh "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" false
+```
+
+To test multiple signs as a single backend sequence:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/sign-sequence-to-text \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy"},
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/76/Extract/Landmarks/WANT.npy"},
+      {"landmark_path": "KSL-Dataset/Pose Data/Batch 2/162/Extract/Landmarks/FOOD.npy"}
+    ],
+    "include_ksl": true,
+    "include_speech": true
+  }'
+```
+
+To test multiple uploaded sign files in order:
+
+```bash
+cd backend/api
+bash test-sign-sequence-upload.sh true ./sequence.wav "KSL-Dataset/Pose Data/Batch 2/65/Extract/Landmarks/ME.npy" "KSL-Dataset/Pose Data/Batch 2/76/Extract/Landmarks/WANT.npy" "KSL-Dataset/Pose Data/Batch 2/162/Extract/Landmarks/FOOD.npy"
+```
+
+If you want real uploaded sign video recognition too, install the optional backend extras from `backend/api`:
+
+```bash
+pip install -r requirements-sign-video.txt
+bash download-sign-video-model.sh
+```
+
+On macOS, keep `.npy` landmark upload as the stable local path for now. Raw MediaPipe video extraction is more reliable in Linux-based environments.
+
+To test the new photo-explain backend flow:
+
+```bash
+cd backend/api
+bash test-photo-explain.sh "/Users/charlenembugua/Downloads/car.jpg" car true ./photo-explain.wav
 ```
 
 ## Troubleshooting
