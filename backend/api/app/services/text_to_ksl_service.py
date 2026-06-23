@@ -9,6 +9,7 @@ from typing import Any
 
 from ..schemas.requests import TextToKslRequest
 from ..schemas.responses import LessonAsset, TextToKslResponse
+from .lesson_asset_service import build_stickman_video_url
 
 TOKEN_PATTERN = re.compile(r"[a-z0-9']+")
 
@@ -74,6 +75,7 @@ def _load_lesson_catalog_assets() -> dict[str, LessonAsset]:
             source=entry.get("source", "cleaned_lesson_catalog"),
             landmark_path=entry.get("landmark_path"),
             stickman_video_path=entry.get("stickman_video_path"),
+            stickman_video_url=build_stickman_video_url(entry.get("asset_id")),
             batch=entry.get("batch"),
             signer_id=entry.get("signer_id"),
             frame_count=entry.get("frame_count"),

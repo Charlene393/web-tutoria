@@ -48,6 +48,7 @@ class LessonAsset(BaseModel):
     source: str
     landmark_path: str | None = None
     stickman_video_path: str | None = None
+    stickman_video_url: str | None = None
     batch: str | None = None
     signer_id: str | None = None
     frame_count: int | None = None

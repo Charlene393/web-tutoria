@@ -40,10 +40,19 @@ def test_text_to_ksl_phrase_match_uses_dataset_backed_gloss() -> None:
     assert body["lesson_assets"][0]["quality_score"] is not None
     assert body["lesson_assets"][0]["landmark_path"].endswith("/ME.npy")
     assert body["lesson_assets"][0]["stickman_video_path"].endswith("/ME.mp4")
+    assert body["lesson_assets"][0]["stickman_video_url"] == "/api/v1/lesson-assets/lesson-sign%3Ame/stickman-video"
     assert body["catalog_backed"] is True
     assert body["catalog_name"] == "ksl_cleaned_lesson_catalog"
     assert body["catalog_generated_at"]
     assert body["status"] == "ok"
+
+
+def test_lesson_asset_stickman_video_endpoint_serves_mp4() -> None:
+    response = client.get("/api/v1/lesson-assets/lesson-sign:me/stickman-video")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("video/mp4")
+    assert len(response.content) > 0
 
 
 def test_text_to_ksl_alias_uses_cleaned_catalog_asset() -> None:
