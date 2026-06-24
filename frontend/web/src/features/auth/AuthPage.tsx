@@ -60,7 +60,9 @@ export function AuthPage({
 
   return (
     <main className="auth-shell">
-      
+      <section className="">
+        <h1 className="auth-hero-title">Tutoria</h1>
+      </section>
 
       <section className="auth-card">
         <div className="auth-switcher" role="tablist" aria-label="Authentication mode">

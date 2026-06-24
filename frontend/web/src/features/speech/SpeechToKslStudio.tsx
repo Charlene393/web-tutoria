@@ -524,13 +524,7 @@ export function SpeechToKslStudio() {
     <main className="voice-shell">
       <section className="voice-layout" aria-labelledby="voice-title">
         <div className="voice-copy">
-          <p className="voice-kicker">Tutoria</p>
-          <h1 id="voice-title">Speak naturally. See KSL instantly.</h1>
-          <p className="voice-subtitle">
-            This frontend now records real microphone audio, uploads it to the FastAPI backend,
-            receives transcript plus KSL mapping, and resolves that into signer output.
-          </p>
-
+          <h1 id="voice-title">Tutoria.</h1>
           <div className="voice-readout" aria-live="polite">
             <span className="voice-label">Transcript</span>
             {showVoiceAnimation ? (
@@ -608,10 +602,7 @@ export function SpeechToKslStudio() {
 
           <div className="backend-proof">
             <div className="backend-proof-header">
-              <div>
-                <span className="voice-label">Backend lesson mapping</span>
-                <strong>{backendStatusSummary}</strong>
-              </div>
+             
               <div className="backend-proof-actions">
                 <button
                   type="button"
@@ -633,19 +624,7 @@ export function SpeechToKslStudio() {
             </div>
 
             <div className="lesson-asset-grid">
-              <div className="lesson-asset-summary">
-                <span className="voice-label">Matched terms</span>
-                <p>{backendMapping?.matched_terms.join(", ") || "None yet"}</p>
-                <span className="voice-label">Unmatched terms</span>
-                <p>{backendMapping?.unmatched_terms.join(", ") || "None"}</p>
-              </div>
-
-              <div className="lesson-asset-summary">
-                <span className="voice-label">Selected lesson step</span>
-                <p>{activeLesson ? `${activeLessonIndex + 1}. ${activeLesson.label}` : "No backend lesson asset yet"}</p>
-                <span className="voice-label">Matched word</span>
-                <p>{activeMatchedTerm || "Waiting"}</p>
-              </div>
+              
             </div>
 
             {backendLessons.length ? (
