@@ -356,6 +356,91 @@ h1 {
   line-height: 1.42;
 }
 
+.backend-proof {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(129, 151, 165, 0.24);
+  border-radius: 12px;
+  background: rgba(12, 17, 22, 0.74);
+}
+
+.backend-proof-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.backend-proof-header strong,
+.lesson-asset-summary p,
+.stickman-copy strong {
+  color: #eef6f9;
+}
+
+.lesson-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lesson-asset-summary {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid rgba(129, 151, 165, 0.18);
+  border-radius: 10px;
+  background: rgba(15, 21, 26, 0.76);
+}
+
+.lesson-asset-summary p {
+  margin: 0;
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.lesson-asset-sequence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.lesson-asset-chip {
+  display: inline-grid;
+  gap: 4px;
+  min-width: 92px;
+  padding: 10px 12px;
+  border: 1px solid rgba(129, 151, 165, 0.24);
+  border-radius: 12px;
+  background: rgba(17, 25, 31, 0.84);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.lesson-asset-chip strong {
+  color: #f3f7f9;
+  font-size: 0.88rem;
+}
+
+.lesson-asset-chip span {
+  font-size: 0.72rem;
+  color: var(--ink-3);
+}
+
+.lesson-asset-chip.is-active {
+  border-color: rgba(49, 208, 198, 0.58);
+  background: rgba(16, 57, 64, 0.76);
+}
+
+.speech-output-bar {
+  display: grid;
+  gap: 8px;
+}
+
+.voice-audio {
+  width: 100%;
+}
+
 .avatar-panel {
   align-content: start;
 }
@@ -481,6 +566,39 @@ h1 {
   background: linear-gradient(90deg, #31d0c6, #f2b66c);
 }
 
+.stickman-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.stickman-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.stickman-copy p {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.stickman-stage {
+  width: 100%;
+  min-height: 240px;
+  overflow: hidden;
+  border: 1px solid rgba(129, 151, 165, 0.24);
+  border-radius: 12px;
+  background: #10161b;
+}
+
+.stickman-video {
+  width: 100%;
+  min-height: 240px;
+  display: block;
+  object-fit: contain;
+  background: #0d1217;
+}
+
 @media (max-width: 980px) {
   .voice-shell {
     padding: 16px;
@@ -493,6 +611,14 @@ h1 {
 
   .three-stage {
     min-height: 350px;
+  }
+
+  .lesson-asset-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-proof-header {
+    flex-direction: column;
   }
 }
 

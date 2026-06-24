@@ -1,7 +1,13 @@
 import { Mic, RotateCcw, Send, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { textToKsl } from "../../api/kslClient";
+import {
+  resolveBackendMediaUrl,
+  textToKsl,
+  textToSpeech,
+  type LessonAsset,
+  type TextToKslResponse,
+} from "../../api/kslClient";
 import type { LandmarkFrame, SignLandmarkClip } from "../../types/landmarks";
 import { ThreeAvatarPlayer } from "../lesson-player/ThreeAvatarPlayer";
 import loveClipData from "../lesson-player/data/love.sign.json";
@@ -38,6 +44,17 @@ function normalizeTokens(tokens: string[]) {
   return tokens.map((token) => token.trim().toUpperCase()).filter(Boolean);
 }
 
+function decodeAudioToUrl(audioBase64: string, contentType: string) {
+  const binary = window.atob(audioBase64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return URL.createObjectURL(new Blob([bytes], { type: contentType }));
+}
+
 function resolveClipFromGloss(gloss: string[]) {
   for (const token of normalizeTokens(gloss)) {
     const clip = LOCAL_CLIP_LIBRARY[token];
@@ -68,6 +85,11 @@ export function SpeechToKslStudio() {
   const [interimTranscript, setInterimTranscript] = useState("");
   const [manualInput, setManualInput] = useState("");
   const [gloss, setGloss] = useState<string[]>([]);
+  const [backendMapping, setBackendMapping] = useState<TextToKslResponse | null>(null);
+  const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+  const [isSpeechGenerating, setIsSpeechGenerating] = useState(false);
+  const [speechPlaybackUrl, setSpeechPlaybackUrl] = useState<string | null>(null);
+  const [speechError, setSpeechError] = useState<string | null>(null);
 
   const [clip, setClip] = useState<SignLandmarkClip | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -81,9 +103,14 @@ export function SpeechToKslStudio() {
   const lastTimestampRef = useRef<number | null>(null);
   const playheadMsRef = useRef(0);
   const [isThinkingPreview, setIsThinkingPreview] = useState(false);
+  const lessonAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const activeClip = clip ?? FALLBACK_CLIP;
   const hasResolvedClip = Boolean(clip);
+  const backendLessons = backendMapping?.lesson_assets ?? [];
+  const activeLesson = backendLessons[activeLessonIndex] ?? null;
+  const activeLessonVideoUrl = resolveBackendMediaUrl(activeLesson?.stickman_video_url);
+  const activeMatchedTerm = backendMapping?.matched_terms[activeLessonIndex] ?? null;
 
   const totalFrames = activeClip.frames.length;
   const frameDuration = 1000 / activeClip.fps;
@@ -156,8 +183,20 @@ export function SpeechToKslStudio() {
       if (thinkingPreviewTimeoutRef.current !== null) {
         window.clearTimeout(thinkingPreviewTimeoutRef.current);
       }
+      if (speechPlaybackUrl) {
+        URL.revokeObjectURL(speechPlaybackUrl);
+      }
     };
-  }, []);
+  }, [speechPlaybackUrl]);
+
+  useEffect(() => {
+    if (!speechPlaybackUrl || !lessonAudioRef.current) {
+      return;
+    }
+
+    lessonAudioRef.current.currentTime = 0;
+    void lessonAudioRef.current.play().catch(() => {});
+  }, [speechPlaybackUrl]);
 
   const runPipeline = useCallback(async (text: string) => {
     const normalizedText = text.trim();
@@ -167,34 +206,61 @@ export function SpeechToKslStudio() {
 
     setStatus("processing");
     setErrorMessage(null);
+    setSpeechError(null);
     setTranscript(normalizedText);
     setInterimTranscript("");
+    setActiveLessonIndex(0);
 
     try {
       const mapped = await textToKsl({ text: normalizedText });
+      setBackendMapping(mapped);
       const nextGloss = normalizeTokens(mapped.gloss);
       setGloss(nextGloss);
 
       const matchedClip = resolveClipFromGloss(nextGloss);
-      if (!matchedClip) {
-        setClip(null);
-        setStatus("error");
-        setErrorMessage(
-          "No local animation asset was found for this gloss yet. Backend can return a lesson asset id to map this automatically.",
-        );
-        resetPlayback();
-        return;
-      }
-
-      setClip(matchedClip);
       setStatus("ready");
-      startPlayback();
+      if (matchedClip) {
+        setClip(matchedClip);
+        startPlayback();
+      } else {
+        setClip(null);
+        resetPlayback();
+      }
     } catch (error) {
       setStatus("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not map text to KSL.");
+      setBackendMapping(null);
       resetPlayback();
     }
   }, [resetPlayback, startPlayback]);
+
+  const speakTranscript = useCallback(async () => {
+    const text = transcript.trim() || manualInput.trim();
+    if (!text) {
+      setSpeechError("No transcript available yet for speech output.");
+      return;
+    }
+
+    setIsSpeechGenerating(true);
+    setSpeechError(null);
+
+    try {
+      const payload = await textToSpeech({
+        text,
+        include_ksl: false,
+      });
+
+      if (speechPlaybackUrl) {
+        URL.revokeObjectURL(speechPlaybackUrl);
+      }
+
+      setSpeechPlaybackUrl(decodeAudioToUrl(payload.audio_base64, payload.content_type));
+    } catch (error) {
+      setSpeechError(error instanceof Error ? error.message : "Could not generate backend speech.");
+    } finally {
+      setIsSpeechGenerating(false);
+    }
+  }, [manualInput, speechPlaybackUrl, transcript]);
 
   const startListening = useCallback(() => {
     const RecognitionCtor = getSpeechRecognitionCtor();
@@ -282,6 +348,9 @@ export function SpeechToKslStudio() {
   const isListening = status === "listening";
   const hasSpeechInput = Boolean((transcript || interimTranscript).trim());
   const glossPlaceholder = hasSpeechInput ? ["Waiting for KSL"] : [];
+  const backendStatusSummary = backendMapping
+    ? `${backendMapping.status.toUpperCase()} · ${backendLessons.length} lesson assets`
+    : "Waiting for backend mapping";
 
   const showVoiceAnimation = isBusy || isThinkingPreview;
   const showTranscript = !isThinkingPreview && status === "ready" && Boolean(transcript.trim());
@@ -371,6 +440,70 @@ export function SpeechToKslStudio() {
                   : "Ready for your next phrase.")}
             </span>
           </div>
+
+          <div className="backend-proof">
+            <div className="backend-proof-header">
+              <div>
+                <span className="voice-label">Backend lesson mapping</span>
+                <strong>{backendStatusSummary}</strong>
+              </div>
+
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => void speakTranscript()}
+                disabled={isBusy || isSpeechGenerating || !transcript.trim()}
+              >
+                <span>{isSpeechGenerating ? "Generating speech..." : "Speak backend output"}</span>
+              </button>
+            </div>
+
+            <div className="lesson-asset-grid">
+              <div className="lesson-asset-summary">
+                <span className="voice-label">Matched terms</span>
+                <p>{backendMapping?.matched_terms.join(", ") || "None yet"}</p>
+                <span className="voice-label">Unmatched terms</span>
+                <p>{backendMapping?.unmatched_terms.join(", ") || "None"}</p>
+              </div>
+
+              <div className="lesson-asset-summary">
+                <span className="voice-label">Selected lesson step</span>
+                <p>{activeLesson ? `${activeLessonIndex + 1}. ${activeLesson.label}` : "No backend lesson asset yet"}</p>
+                <span className="voice-label">Matched word</span>
+                <p>{activeMatchedTerm || "Waiting"}</p>
+              </div>
+            </div>
+
+            {backendLessons.length ? (
+              <div className="lesson-asset-sequence" aria-label="Backend lesson assets">
+                {backendLessons.map((lesson: LessonAsset, index) => (
+                  <button
+                    key={`${lesson.asset_id}-${index}`}
+                    type="button"
+                    className={`lesson-asset-chip${index === activeLessonIndex ? " is-active" : ""}`}
+                    onClick={() => setActiveLessonIndex(index)}
+                  >
+                    <span>{index + 1}</span>
+                    <strong>{lesson.label}</strong>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {speechPlaybackUrl ? (
+              <div className="speech-output-bar">
+                <span className="voice-label">Backend speech output</span>
+                <audio ref={lessonAudioRef} controls src={speechPlaybackUrl} className="voice-audio" />
+              </div>
+            ) : null}
+
+            {speechError ? (
+              <div className="pipeline-state" role="alert">
+                <strong>Speech error</strong>
+                <span>{speechError}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
 
         <div className="avatar-panel">
@@ -399,6 +532,36 @@ export function SpeechToKslStudio() {
           <div className="timeline" aria-label="Animation progress">
             <div className="timeline-track">
               <div className="timeline-fill" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+          <div className="stickman-panel">
+            <div className="stickman-copy">
+              <span className="voice-label">Backend stickman lesson proof</span>
+              <strong>{activeLesson?.label ?? "No lesson asset selected"}</strong>
+              <p>
+                {hasResolvedClip
+                  ? "3D avatar preview is running for the locally supported sign."
+                  : "No local 3D landmark clip exists for this gloss yet, so use the backend stickman video as the source of truth."}
+              </p>
+            </div>
+
+            <div className="stickman-stage">
+              {activeLessonVideoUrl ? (
+                <video
+                  key={activeLessonVideoUrl}
+                  src={activeLessonVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="stickman-video"
+                />
+              ) : (
+                <div className="three-stage three-stage-error">
+                  <strong>No backend stickman lesson clip yet.</strong>
+                  <span>Run the mapping pipeline with a supported phrase to load the dataset sign preview.</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
