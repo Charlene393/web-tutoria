@@ -57,6 +57,22 @@ class LessonAsset(BaseModel):
     selected_from_flagged_sample: bool | None = None
 
 
+class LandmarkFrameResponse(BaseModel):
+    pose: list[list[float]] = Field(default_factory=list)
+    leftHand: list[list[float]] = Field(default_factory=list)
+    rightHand: list[list[float]] = Field(default_factory=list)
+
+
+class LessonLandmarkClipResponse(BaseModel):
+    asset_id: str
+    label: str
+    fps: float
+    source: str
+    frame_count: int
+    landmark_path: str | None = None
+    frames: list[LandmarkFrameResponse] = Field(default_factory=list)
+
+
 class TextToKslResponse(BaseModel):
     original_text: str
     normalized_text: str

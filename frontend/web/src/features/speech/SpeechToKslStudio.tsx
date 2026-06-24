@@ -2,10 +2,14 @@ import { Mic, RotateCcw, Send, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
+  lessonAssetLandmarkClip,
   resolveBackendMediaUrl,
+  speechToTextUpload,
   textToKsl,
   textToSpeech,
   type LessonAsset,
+  type LessonLandmarkClipResponse,
+  type SpeechToTextResponse,
   type TextToKslResponse,
 } from "../../api/kslClient";
 import type { LandmarkFrame, SignLandmarkClip } from "../../types/landmarks";
@@ -14,18 +18,6 @@ import loveClipData from "../lesson-player/data/love.sign.json";
 import { getInterpolatedFrame } from "../lesson-player/landmarkPlayback";
 
 type StudioStatus = "idle" | "listening" | "processing" | "ready" | "error";
-
-type SpeechRecognitionCtor = new () => {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onstart: (() => void) | null;
-  onresult: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
 
 const EMPTY_FRAME: LandmarkFrame = {
   pose: [],
@@ -65,17 +57,30 @@ function resolveClipFromGloss(gloss: string[]) {
   return null;
 }
 
-function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
-  if (typeof window === "undefined") {
-    return null;
+function getPreferredAudioFormat() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") {
+    return {
+      mimeType: "",
+      extension: "webm",
+    };
   }
 
-  const maybeWindow = window as Window & {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  };
+  const candidates = [
+    { mimeType: "audio/webm;codecs=opus", extension: "webm" },
+    { mimeType: "audio/webm", extension: "webm" },
+    { mimeType: "audio/mp4", extension: "m4a" },
+  ];
 
-  return maybeWindow.SpeechRecognition ?? maybeWindow.webkitSpeechRecognition ?? null;
+  for (const candidate of candidates) {
+    if (MediaRecorder.isTypeSupported(candidate.mimeType)) {
+      return candidate;
+    }
+  }
+
+  return {
+    mimeType: "",
+    extension: "webm",
+  };
 }
 
 export function SpeechToKslStudio() {
@@ -87,9 +92,13 @@ export function SpeechToKslStudio() {
   const [gloss, setGloss] = useState<string[]>([]);
   const [backendMapping, setBackendMapping] = useState<TextToKslResponse | null>(null);
   const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+  const [isBackendSequencePlaying, setIsBackendSequencePlaying] = useState(false);
   const [isSpeechGenerating, setIsSpeechGenerating] = useState(false);
   const [speechPlaybackUrl, setSpeechPlaybackUrl] = useState<string | null>(null);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [recordingHint, setRecordingHint] = useState("");
+  const [isAvatarClipLoading, setIsAvatarClipLoading] = useState(false);
+  const [avatarClipError, setAvatarClipError] = useState<string | null>(null);
 
   const [clip, setClip] = useState<SignLandmarkClip | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -97,13 +106,17 @@ export function SpeechToKslStudio() {
   const [framePosition, setFramePosition] = useState(0);
   const [avatarRefreshKey, setAvatarRefreshKey] = useState(0);
 
-  const recognitionRef = useRef<InstanceType<SpeechRecognitionCtor> | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const clipCacheRef = useRef<Record<string, SignLandmarkClip>>({});
   const animationRef = useRef<number | null>(null);
   const thinkingPreviewTimeoutRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
   const playheadMsRef = useRef(0);
   const [isThinkingPreview, setIsThinkingPreview] = useState(false);
   const lessonAudioRef = useRef<HTMLAudioElement | null>(null);
+  const backendVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const activeClip = clip ?? FALLBACK_CLIP;
   const hasResolvedClip = Boolean(clip);
@@ -111,6 +124,9 @@ export function SpeechToKslStudio() {
   const activeLesson = backendLessons[activeLessonIndex] ?? null;
   const activeLessonVideoUrl = resolveBackendMediaUrl(activeLesson?.stickman_video_url);
   const activeMatchedTerm = backendMapping?.matched_terms[activeLessonIndex] ?? null;
+  const avatarCapabilityLabel = hasResolvedClip
+    ? "3D avatar is now consuming real backend landmark frames for the selected lesson step."
+    : "Avatar clip is not loaded yet, so the backend stickman video remains the source of truth.";
 
   const totalFrames = activeClip.frames.length;
   const frameDuration = 1000 / activeClip.fps;
@@ -186,6 +202,8 @@ export function SpeechToKslStudio() {
       if (speechPlaybackUrl) {
         URL.revokeObjectURL(speechPlaybackUrl);
       }
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, [speechPlaybackUrl]);
 
@@ -197,6 +215,78 @@ export function SpeechToKslStudio() {
     lessonAudioRef.current.currentTime = 0;
     void lessonAudioRef.current.play().catch(() => {});
   }, [speechPlaybackUrl]);
+
+  useEffect(() => {
+    const assetId = activeLesson?.asset_id;
+    if (!assetId) {
+      setClip(null);
+      setAvatarClipError(null);
+      resetPlayback();
+      return;
+    }
+
+    const cached = clipCacheRef.current[assetId];
+    if (cached) {
+      setClip(cached);
+      setAvatarClipError(null);
+      if (status === "ready") {
+        startPlayback();
+      }
+      return;
+    }
+
+    let isCancelled = false;
+    setIsAvatarClipLoading(true);
+    setAvatarClipError(null);
+
+    void lessonAssetLandmarkClip(assetId)
+      .then((payload: LessonLandmarkClipResponse) => {
+        if (isCancelled) {
+          return;
+        }
+
+        const nextClip: SignLandmarkClip = {
+          label: payload.label,
+          fps: payload.fps,
+          source: payload.source,
+          frames: payload.frames as LandmarkFrame[],
+        };
+
+        clipCacheRef.current[assetId] = nextClip;
+        setClip(nextClip);
+        if (status === "ready") {
+          startPlayback();
+        }
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+        setClip(null);
+        setAvatarClipError(
+          error instanceof Error ? error.message : "Could not load backend landmark clip.",
+        );
+        resetPlayback();
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsAvatarClipLoading(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeLesson?.asset_id, resetPlayback, startPlayback, status]);
+
+  useEffect(() => {
+    if (!isBackendSequencePlaying || !activeLessonVideoUrl || !backendVideoRef.current) {
+      return;
+    }
+
+    backendVideoRef.current.currentTime = 0;
+    void backendVideoRef.current.play().catch(() => {});
+  }, [activeLessonIndex, activeLessonVideoUrl, isBackendSequencePlaying]);
 
   const runPipeline = useCallback(async (text: string) => {
     const normalizedText = text.trim();
@@ -214,25 +304,41 @@ export function SpeechToKslStudio() {
     try {
       const mapped = await textToKsl({ text: normalizedText });
       setBackendMapping(mapped);
+      setIsBackendSequencePlaying(mapped.lesson_assets.length > 0);
       const nextGloss = normalizeTokens(mapped.gloss);
       setGloss(nextGloss);
-
-      const matchedClip = resolveClipFromGloss(nextGloss);
       setStatus("ready");
-      if (matchedClip) {
-        setClip(matchedClip);
-        startPlayback();
-      } else {
-        setClip(null);
-        resetPlayback();
-      }
     } catch (error) {
       setStatus("error");
       setErrorMessage(error instanceof Error ? error.message : "Could not map text to KSL.");
       setBackendMapping(null);
+      setClip(null);
       resetPlayback();
     }
-  }, [resetPlayback, startPlayback]);
+  }, [resetPlayback]);
+
+  const applyBackendSpeechMapping = useCallback(
+    (payload: SpeechToTextResponse, fallbackText: string) => {
+      const backendText = payload.transcript?.trim() || fallbackText.trim();
+      const mapped = payload.text_to_ksl ?? null;
+
+      setTranscript(backendText);
+      setInterimTranscript("");
+      setActiveLessonIndex(0);
+      setIsBackendSequencePlaying(Boolean(mapped?.lesson_assets?.length));
+
+      if (!mapped) {
+        void runPipeline(backendText);
+        return;
+      }
+
+      setBackendMapping(mapped);
+      const nextGloss = normalizeTokens(mapped.gloss);
+      setGloss(nextGloss);
+      setStatus("ready");
+    },
+    [runPipeline],
+  );
 
   const speakTranscript = useCallback(async () => {
     const text = transcript.trim() || manualInput.trim();
@@ -262,70 +368,129 @@ export function SpeechToKslStudio() {
     }
   }, [manualInput, speechPlaybackUrl, transcript]);
 
-  const startListening = useCallback(() => {
-    const RecognitionCtor = getSpeechRecognitionCtor();
-    if (!RecognitionCtor) {
+  const startListening = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setStatus("error");
-      setErrorMessage("Speech recognition is not supported in this browser. Use the text box below.");
+      setErrorMessage("Microphone recording is not supported in this browser. Use the text box below.");
       return;
     }
 
-    const recognition = new RecognitionCtor();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = "en-KE";
-
-    recognition.onstart = () => {
-      setStatus("listening");
-      setErrorMessage(null);
-      setInterimTranscript("");
-    };
-
-    recognition.onresult = (event: any) => {
-      let finalText = "";
-      let interim = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
-        const result = event.results[i];
-        const text = result[0]?.transcript ?? "";
-        if (result.isFinal) {
-          finalText += text;
-        } else {
-          interim += text;
-        }
-      }
-
-      if (interim) {
-        setInterimTranscript(interim.trim());
-      }
-
-      if (finalText.trim()) {
-        setInterimTranscript("");
-        void runPipeline(finalText);
-      }
-    };
-
-    recognition.onerror = (event: any) => {
+    if (typeof MediaRecorder === "undefined") {
       setStatus("error");
-      setErrorMessage(event?.error ? `Speech error: ${event.error}` : "Speech recognition failed.");
-    };
+      setErrorMessage("MediaRecorder is not available in this browser. Use the text box below.");
+      return;
+    }
 
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setStatus((current) => (current === "listening" ? "idle" : current));
-      setInterimTranscript("");
-    };
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { mimeType, extension } = getPreferredAudioFormat();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
 
-    recognitionRef.current = recognition;
-    recognition.start();
-  }, [runPipeline]);
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.onstart = () => {
+        setStatus("listening");
+        setErrorMessage(null);
+        setSpeechError(null);
+        setRecordingHint("Recording from microphone...");
+        setInterimTranscript("Recording...");
+      };
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => {
+        setStatus("error");
+        setErrorMessage("Microphone recording failed.");
+        setRecordingHint("");
+        setInterimTranscript("");
+      };
+
+      recorder.onstop = async () => {
+        const chunks = audioChunksRef.current;
+        const blobMimeType = mimeType || recorder.mimeType || "audio/webm";
+        const audioBlob = new Blob(chunks, { type: blobMimeType });
+        audioChunksRef.current = [];
+        mediaRecorderRef.current = null;
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+
+        if (!audioBlob.size) {
+          setStatus("error");
+          setErrorMessage("No microphone audio was captured. Please try again.");
+          setRecordingHint("");
+          setInterimTranscript("");
+          return;
+        }
+
+        setStatus("processing");
+        setRecordingHint("Uploading audio to backend...");
+        setInterimTranscript("Uploading audio...");
+
+        try {
+          const payload = await speechToTextUpload({
+            audioBlob,
+            filename: `speech-input.${extension}`,
+            includeKsl: true,
+          });
+          applyBackendSpeechMapping(payload, payload.transcript ?? "");
+          setRecordingHint("Backend transcription complete.");
+        } catch (error) {
+          setStatus("error");
+          setErrorMessage(
+            error instanceof Error ? error.message : "Could not upload microphone audio to backend.",
+          );
+        } finally {
+          setInterimTranscript("");
+        }
+      };
+
+      recorder.start();
+    } catch (error) {
+      setStatus("error");
+      setErrorMessage(
+        error instanceof Error ? error.message : "Could not access the microphone for recording.",
+      );
+      setRecordingHint("");
+    }
+  }, [applyBackendSpeechMapping]);
 
   const stopListening = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setStatus((current) => (current === "listening" ? "idle" : current));
-    setInterimTranscript("");
+    if (!mediaRecorderRef.current) {
+      return;
+    }
+
+    if (mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
   }, []);
+
+  const handleBackendSequenceRestart = useCallback(() => {
+    if (!backendLessons.length) {
+      return;
+    }
+
+    setActiveLessonIndex(0);
+    setIsBackendSequencePlaying(true);
+  }, [backendLessons.length]);
+
+  const handleBackendVideoEnded = useCallback(() => {
+    if (!isBackendSequencePlaying) {
+      return;
+    }
+
+    if (activeLessonIndex < backendLessons.length - 1) {
+      setActiveLessonIndex((index) => index + 1);
+      return;
+    }
+
+    setIsBackendSequencePlaying(false);
+  }, [activeLessonIndex, backendLessons.length, isBackendSequencePlaying]);
 
   const submitManual = useCallback((event: FormEvent) => {
     event.preventDefault();
@@ -362,8 +527,8 @@ export function SpeechToKslStudio() {
           <p className="voice-kicker">Tutoria</p>
           <h1 id="voice-title">Speak naturally. See KSL instantly.</h1>
           <p className="voice-subtitle">
-            This frontend is designed for easy backend integration. Audio input becomes transcript,
-            transcript maps to KSL gloss, and gloss resolves to signer animation.
+            This frontend now records real microphone audio, uploads it to the FastAPI backend,
+            receives transcript plus KSL mapping, and resolves that into signer output.
           </p>
 
           <div className="voice-readout" aria-live="polite">
@@ -384,7 +549,7 @@ export function SpeechToKslStudio() {
                 </span>
               </div>
             ) : (
-              <p>{showTranscript ? transcript : ""}</p>
+              <p>{showTranscript ? transcript : recordingHint || ""}</p>
             )}
           </div>
 
@@ -402,10 +567,10 @@ export function SpeechToKslStudio() {
               className="orb-button"
               onClick={isListening ? stopListening : startListening}
               disabled={isBusy}
-              title={isListening ? "Stop listening" : "Start listening"}
+              title={isListening ? "Stop recording" : "Start microphone recording"}
             >
               {isListening ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
-              <span>{isListening ? "Listening... tap to stop" : "Tap to speak"}</span>
+              <span>{isListening ? "Recording... tap to stop" : "Tap to record"}</span>
             </button>
 
             <form className="manual-input" onSubmit={submitManual}>
@@ -447,15 +612,24 @@ export function SpeechToKslStudio() {
                 <span className="voice-label">Backend lesson mapping</span>
                 <strong>{backendStatusSummary}</strong>
               </div>
-
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => void speakTranscript()}
-                disabled={isBusy || isSpeechGenerating || !transcript.trim()}
-              >
-                <span>{isSpeechGenerating ? "Generating speech..." : "Speak backend output"}</span>
-              </button>
+              <div className="backend-proof-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => void speakTranscript()}
+                  disabled={isBusy || isSpeechGenerating || !transcript.trim()}
+                >
+                  <span>{isSpeechGenerating ? "Generating speech..." : "Speak backend output"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="primary-button secondary-surface"
+                  onClick={handleBackendSequenceRestart}
+                  disabled={!backendLessons.length}
+                >
+                  <span>{isBackendSequencePlaying ? "Sequence playing" : "Play lesson sequence"}</span>
+                </button>
+              </div>
             </div>
 
             <div className="lesson-asset-grid">
@@ -481,7 +655,10 @@ export function SpeechToKslStudio() {
                     key={`${lesson.asset_id}-${index}`}
                     type="button"
                     className={`lesson-asset-chip${index === activeLessonIndex ? " is-active" : ""}`}
-                    onClick={() => setActiveLessonIndex(index)}
+                    onClick={() => {
+                      setActiveLessonIndex(index);
+                      setIsBackendSequencePlaying(false);
+                    }}
                   >
                     <span>{index + 1}</span>
                     <strong>{lesson.label}</strong>
@@ -501,6 +678,13 @@ export function SpeechToKslStudio() {
               <div className="pipeline-state" role="alert">
                 <strong>Speech error</strong>
                 <span>{speechError}</span>
+              </div>
+            ) : null}
+
+            {avatarClipError ? (
+              <div className="pipeline-state" role="alert">
+                <strong>Avatar clip error</strong>
+                <span>{avatarClipError}</span>
               </div>
             ) : null}
           </div>
@@ -539,22 +723,27 @@ export function SpeechToKslStudio() {
             <div className="stickman-copy">
               <span className="voice-label">Backend stickman lesson proof</span>
               <strong>{activeLesson?.label ?? "No lesson asset selected"}</strong>
-              <p>
-                {hasResolvedClip
-                  ? "3D avatar preview is running for the locally supported sign."
-                  : "No local 3D landmark clip exists for this gloss yet, so use the backend stickman video as the source of truth."}
-              </p>
+              <p>{avatarCapabilityLabel}</p>
+              <span className="stickman-sequence-badge">
+                {isAvatarClipLoading ? "Loading avatar landmark clip" : "Avatar clip synced to lesson"}
+              </span>
+              <span className="stickman-sequence-badge">
+                {isBackendSequencePlaying ? "Auto-stepping lesson sequence" : "Manual lesson step"}
+              </span>
             </div>
 
             <div className="stickman-stage">
               {activeLessonVideoUrl ? (
                 <video
+                  ref={backendVideoRef}
                   key={activeLessonVideoUrl}
                   src={activeLessonVideoUrl}
                   controls
                   playsInline
                   preload="metadata"
+                  muted
                   className="stickman-video"
+                  onEnded={handleBackendVideoEnded}
                 />
               ) : (
                 <div className="three-stage three-stage-error">

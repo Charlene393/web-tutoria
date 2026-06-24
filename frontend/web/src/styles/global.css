@@ -372,6 +372,13 @@ h1 {
   gap: 12px;
 }
 
+.backend-proof-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .backend-proof-header strong,
 .lesson-asset-summary p,
 .stickman-copy strong {
@@ -470,6 +477,12 @@ h1 {
   color: #f3f7f9;
   background: #1e2931;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.34);
+}
+
+.secondary-surface {
+  background: linear-gradient(160deg, rgba(49, 208, 198, 0.18), rgba(49, 208, 198, 0.08));
+  border: 1px solid rgba(49, 208, 198, 0.32);
+  box-shadow: none;
 }
 
 .primary-button:disabled {
@@ -582,6 +595,20 @@ h1 {
   line-height: 1.45;
 }
 
+.stickman-sequence-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(129, 151, 165, 0.24);
+  background: rgba(17, 25, 31, 0.84);
+  color: #d7eef0;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
 .stickman-stage {
   width: 100%;
   min-height: 240px;
@@ -619,6 +646,10 @@ h1 {
 
   .backend-proof-header {
     flex-direction: column;
+  }
+
+  .backend-proof-actions {
+    justify-content: flex-start;
   }
 }
 

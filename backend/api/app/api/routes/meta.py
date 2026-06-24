@@ -18,6 +18,7 @@ def _api_index() -> dict[str, object]:
             "GET /api/v1/health",
             "POST /api/v1/text-to-ksl",
             "GET /api/v1/lesson-assets/{asset_id}/stickman-video",
+            "GET /api/v1/lesson-assets/{asset_id}/landmark-clip",
             "POST /api/v1/text-to-speech",
             "POST /api/v1/speech-to-text",
             "POST /api/v1/sign-to-text",

@@ -14,9 +14,20 @@ export type LessonAsset = {
   selected_from_flagged_sample?: boolean | null;
 };
 
-export type SpeechToTextRequest = {
-  audio_url?: string;
-  session_id?: string;
+export type LandmarkFrame = {
+  pose: [number, number, number][];
+  leftHand: [number, number, number][];
+  rightHand: [number, number, number][];
+};
+
+export type LessonLandmarkClipResponse = {
+  asset_id: string;
+  label: string;
+  fps: number;
+  source: string;
+  frame_count: number;
+  landmark_path?: string | null;
+  frames: LandmarkFrame[];
 };
 
 export type SpeechToTextResponse = {
@@ -114,6 +125,31 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
   return (await response.json()) as TResponse;
 }
 
+async function postFormData<TResponse>(path: string, body: FormData): Promise<TResponse> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    body,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed (${response.status})`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+async function getJson<TResponse>(path: string): Promise<TResponse> {
+  const response = await fetch(`${API_BASE}${path}`);
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed (${response.status})`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
 export function resolveBackendMediaUrl(urlPath?: string | null) {
   if (!urlPath) {
     return null;
@@ -126,8 +162,25 @@ export function resolveBackendMediaUrl(urlPath?: string | null) {
   return `${API_ORIGIN}${urlPath}`;
 }
 
-export function speechToText(request: SpeechToTextRequest) {
-  return postJson<SpeechToTextResponse>("/speech-to-text", request);
+export function speechToTextUpload({
+  audioBlob,
+  filename,
+  includeKsl = true,
+  sessionId,
+}: {
+  audioBlob: Blob;
+  filename?: string;
+  includeKsl?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  formData.append("audio", audioBlob, filename ?? "speech-input.webm");
+  formData.append("include_ksl", String(includeKsl));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<SpeechToTextResponse>("/speech-to-text", formData);
 }
 
 export function textToKsl(request: TextToKslRequest) {
@@ -136,4 +189,10 @@ export function textToKsl(request: TextToKslRequest) {
 
 export function textToSpeech(request: TextToSpeechRequest) {
   return postJson<TextToSpeechResponse>("/text-to-speech", request);
+}
+
+export function lessonAssetLandmarkClip(assetId: string) {
+  return getJson<LessonLandmarkClipResponse>(
+    `/lesson-assets/${encodeURIComponent(assetId)}/landmark-clip`,
+  );
 }
