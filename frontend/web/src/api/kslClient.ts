@@ -40,6 +40,31 @@ export type SpeechToTextResponse = {
   status: string;
 };
 
+export type AuthUser = {
+  id: number;
+  email: string;
+  full_name?: string | null;
+  created_at: string;
+};
+
+export type AuthTokenResponse = {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+  status: string;
+};
+
+export type AuthRegisterRequest = {
+  email: string;
+  password: string;
+  full_name?: string | null;
+};
+
+export type AuthLoginRequest = {
+  email: string;
+  password: string;
+};
+
 export type TextToSpeechRequest = {
   text: string;
   include_ksl?: boolean;
@@ -107,13 +132,54 @@ function normalizeApiBase(base: string): string {
 
 const API_BASE = normalizeApiBase(runtimeConfigBase);
 const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, "");
+const AUTH_STORAGE_KEY = "web-tutoria-auth-session";
+
+type StoredAuthSession = {
+  accessToken: string;
+  user: AuthUser;
+};
+
+function getStoredAuthSession(): StoredAuthSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as StoredAuthSession;
+  } catch {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    return null;
+  }
+}
+
+function getAccessToken() {
+  return getStoredAuthSession()?.accessToken ?? null;
+}
+
+function buildHeaders(contentType?: string) {
+  const headers = new Headers();
+
+  if (contentType) {
+    headers.set("Content-Type", contentType);
+  }
+
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  return headers;
+}
 
 async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: buildHeaders("application/json"),
     body: JSON.stringify(body),
   });
 
@@ -128,6 +194,7 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
 async function postFormData<TResponse>(path: string, body: FormData): Promise<TResponse> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
+    headers: buildHeaders(),
     body,
   });
 
@@ -140,7 +207,9 @@ async function postFormData<TResponse>(path: string, body: FormData): Promise<TR
 }
 
 async function getJson<TResponse>(path: string): Promise<TResponse> {
-  const response = await fetch(`${API_BASE}${path}`);
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: buildHeaders(),
+  });
 
   if (!response.ok) {
     const message = await response.text();
@@ -160,6 +229,44 @@ export function resolveBackendMediaUrl(urlPath?: string | null) {
   }
 
   return `${API_ORIGIN}${urlPath}`;
+}
+
+export function persistAuthSession(payload: AuthTokenResponse) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    AUTH_STORAGE_KEY,
+    JSON.stringify({
+      accessToken: payload.access_token,
+      user: payload.user,
+    } satisfies StoredAuthSession),
+  );
+}
+
+export function clearAuthSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+export function readAuthSession() {
+  return getStoredAuthSession();
+}
+
+export function registerAuth(request: AuthRegisterRequest) {
+  return postJson<AuthTokenResponse>("/auth/register", request);
+}
+
+export function loginAuth(request: AuthLoginRequest) {
+  return postJson<AuthTokenResponse>("/auth/login", request);
+}
+
+export function fetchCurrentUser() {
+  return getJson<AuthUser>("/auth/me");
 }
 
 export function speechToTextUpload({

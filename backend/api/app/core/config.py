@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     app_name: str = "Web Tutoria API"
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/web_tutoria"
+    auth_jwt_secret: str = "change-me-before-production"
+    auth_jwt_algorithm: str = "HS256"
+    auth_access_token_expire_minutes: int = 1440
+    auth_password_min_length: int = 8
     sign_recognizer_artifact_path: str | None = None
     sign_recognizer_manifest_path: str | None = None
     sign_recognizer_label_set_path: str | None = None

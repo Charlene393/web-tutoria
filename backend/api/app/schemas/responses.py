@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +12,20 @@ class SpeechToTextResponse(BaseModel):
     model_id: str | None = None
     detected_language: str | None = None
     text_to_ksl: TextToKslResponse | None = None
+    status: str
+
+
+class AuthUserResponse(BaseModel):
+    id: int
+    email: str
+    full_name: str | None = None
+    created_at: datetime
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: AuthUserResponse
     status: str
 
 
