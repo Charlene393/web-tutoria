@@ -1,4 +1,15 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
+
+
+class AuthRegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str | None = None
+
+
+class AuthLoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
 
 class SpeechToTextRequest(BaseModel):

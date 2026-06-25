@@ -1,0 +1,451 @@
+export type LessonAsset = {
+  asset_id: string;
+  label: string;
+  sample_count: number;
+  source: string;
+  landmark_path?: string | null;
+  stickman_video_path?: string | null;
+  stickman_video_url?: string | null;
+  batch?: string | null;
+  signer_id?: string | null;
+  frame_count?: number | null;
+  sample_flags?: string[];
+  quality_score?: number | null;
+  selected_from_flagged_sample?: boolean | null;
+};
+
+export type LandmarkFrame = {
+  pose: [number, number, number][];
+  leftHand: [number, number, number][];
+  rightHand: [number, number, number][];
+};
+
+export type LessonLandmarkClipResponse = {
+  asset_id: string;
+  label: string;
+  fps: number;
+  source: string;
+  frame_count: number;
+  landmark_path?: string | null;
+  frames: LandmarkFrame[];
+};
+
+export type SpeechToTextResponse = {
+  transcript: string;
+  confidence?: number | null;
+  provider?: string | null;
+  model_id?: string | null;
+  detected_language?: string | null;
+  text_to_ksl?: TextToKslResponse | null;
+  status: string;
+};
+
+export type SignMatchCandidate = {
+  label: string;
+  confidence: number;
+  landmark_path?: string | null;
+  lesson_asset_id?: string | null;
+};
+
+export type SignToTextResponse = {
+  label?: string | null;
+  confidence?: number | null;
+  text?: string | null;
+  provider?: string | null;
+  model_id?: string | null;
+  source_kind?: string | null;
+  source_landmark_path?: string | null;
+  source_upload_filename?: string | null;
+  matched_landmark_path?: string | null;
+  extracted_frame_count?: number | null;
+  lesson_asset_id?: string | null;
+  dataset_backed: boolean;
+  top_matches: SignMatchCandidate[];
+  speech?: TextToSpeechResponse | null;
+  status: string;
+};
+
+export type SignSequenceItemResponse = {
+  index: number;
+  label?: string | null;
+  confidence?: number | null;
+  text?: string | null;
+  source_kind?: string | null;
+  source_landmark_path?: string | null;
+  matched_landmark_path?: string | null;
+  lesson_asset_id?: string | null;
+  top_matches: SignMatchCandidate[];
+  status: string;
+};
+
+export type SignSequenceToTextResponse = {
+  text: string;
+  normalized_text: string;
+  sign_count: number;
+  items: SignSequenceItemResponse[];
+  provider?: string | null;
+  model_id?: string | null;
+  text_to_ksl?: TextToKslResponse | null;
+  speech?: TextToSpeechResponse | null;
+  status: string;
+};
+
+export type PhotoExplainResponse = {
+  object_name?: string | null;
+  normalized_object_name?: string | null;
+  explanation: string;
+  suggested_sign?: string | null;
+  provider?: string | null;
+  source_kind?: string | null;
+  source_image_filename?: string | null;
+  text_to_ksl?: TextToKslResponse | null;
+  speech?: TextToSpeechResponse | null;
+  status: string;
+};
+
+export type AuthUser = {
+  id: number;
+  email: string;
+  full_name?: string | null;
+  created_at: string;
+};
+
+export type AuthTokenResponse = {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+  status: string;
+};
+
+export type AuthRegisterRequest = {
+  email: string;
+  password: string;
+  full_name?: string | null;
+};
+
+export type AuthLoginRequest = {
+  email: string;
+  password: string;
+};
+
+export type TextToSpeechRequest = {
+  text: string;
+  include_ksl?: boolean;
+  voice_id?: string | null;
+  output_format?: string | null;
+  session_id?: string | null;
+};
+
+export type TextToSpeechResponse = {
+  text: string;
+  audio_base64: string;
+  audio_size_bytes: number;
+  content_type: string;
+  file_extension: string;
+  provider?: string | null;
+  model_id?: string | null;
+  voice_id?: string | null;
+  output_format?: string | null;
+  text_to_ksl?: TextToKslResponse | null;
+  status: string;
+};
+
+export type TextToKslRequest = {
+  text: string;
+};
+
+export type TextToKslResponse = {
+  original_text: string;
+  normalized_text: string;
+  gloss: string[];
+  matched_terms: string[];
+  unmatched_terms: string[];
+  supported: boolean;
+  dataset_backed: boolean;
+  dataset_label_counts: Record<string, number>;
+  lesson_assets: LessonAsset[];
+  lesson_asset_id?: string | null;
+  catalog_backed?: boolean | null;
+  catalog_name?: string | null;
+  catalog_generated_at?: string | null;
+  status: string;
+};
+
+const importMetaEnv = (import.meta as ImportMeta & {
+  env?: Record<string, string | undefined>;
+}).env;
+
+const runtimeConfigBase =
+  (globalThis as { __KSL_API_BASE__?: string }).__KSL_API_BASE__?.trim() ||
+  importMetaEnv?.VITE_API_BASE_URL?.trim() ||
+  "";
+
+function normalizeApiBase(base: string): string {
+  const trimmed = base.replace(/\/+$/, "");
+  if (!trimmed) {
+    return "http://127.0.0.1:8000/api/v1";
+  }
+
+  if (trimmed.endsWith("/api/v1")) {
+    return trimmed;
+  }
+
+  return `${trimmed}/api/v1`;
+}
+
+const API_BASE = normalizeApiBase(runtimeConfigBase);
+const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, "");
+const AUTH_STORAGE_KEY = "web-tutoria-auth-session";
+
+type StoredAuthSession = {
+  accessToken: string;
+  user: AuthUser;
+};
+
+function getStoredAuthSession(): StoredAuthSession | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as StoredAuthSession;
+  } catch {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+    return null;
+  }
+}
+
+function getAccessToken() {
+  return getStoredAuthSession()?.accessToken ?? null;
+}
+
+function buildHeaders(contentType?: string) {
+  const headers = new Headers();
+
+  if (contentType) {
+    headers.set("Content-Type", contentType);
+  }
+
+  const accessToken = getAccessToken();
+  if (accessToken) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
+
+  return headers;
+}
+
+async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: buildHeaders("application/json"),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed (${response.status})`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+async function postFormData<TResponse>(path: string, body: FormData): Promise<TResponse> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: buildHeaders(),
+    body,
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed (${response.status})`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+async function getJson<TResponse>(path: string): Promise<TResponse> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    headers: buildHeaders(),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Request failed (${response.status})`);
+  }
+
+  return (await response.json()) as TResponse;
+}
+
+export function resolveBackendMediaUrl(urlPath?: string | null) {
+  if (!urlPath) {
+    return null;
+  }
+
+  if (urlPath.startsWith("http://") || urlPath.startsWith("https://")) {
+    return urlPath;
+  }
+
+  return `${API_ORIGIN}${urlPath}`;
+}
+
+export function persistAuthSession(payload: AuthTokenResponse) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    AUTH_STORAGE_KEY,
+    JSON.stringify({
+      accessToken: payload.access_token,
+      user: payload.user,
+    } satisfies StoredAuthSession),
+  );
+}
+
+export function clearAuthSession() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+export function readAuthSession() {
+  return getStoredAuthSession();
+}
+
+export function registerAuth(request: AuthRegisterRequest) {
+  return postJson<AuthTokenResponse>("/auth/register", request);
+}
+
+export function loginAuth(request: AuthLoginRequest) {
+  return postJson<AuthTokenResponse>("/auth/login", request);
+}
+
+export function fetchCurrentUser() {
+  return getJson<AuthUser>("/auth/me");
+}
+
+export function speechToTextUpload({
+  audioBlob,
+  filename,
+  includeKsl = true,
+  sessionId,
+}: {
+  audioBlob: Blob;
+  filename?: string;
+  includeKsl?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  formData.append("audio", audioBlob, filename ?? "speech-input.webm");
+  formData.append("include_ksl", String(includeKsl));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<SpeechToTextResponse>("/speech-to-text", formData);
+}
+
+export function signToTextUpload({
+  signFile,
+  filename,
+  topK = 3,
+  includeSpeech = false,
+  sessionId,
+}: {
+  signFile: Blob;
+  filename?: string;
+  topK?: number;
+  includeSpeech?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  formData.append("sign_file", signFile, filename ?? "sign-upload.npy");
+  formData.append("top_k", String(topK));
+  formData.append("include_speech", String(includeSpeech));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<SignToTextResponse>("/sign-to-text-upload", formData);
+}
+
+export function signSequenceToTextUpload({
+  signFiles,
+  topK = 3,
+  includeKsl = true,
+  includeSpeech = false,
+  sessionId,
+}: {
+  signFiles: File[];
+  topK?: number;
+  includeKsl?: boolean;
+  includeSpeech?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  signFiles.forEach((file) => {
+    formData.append("sign_files", file, file.name);
+  });
+  formData.append("top_k", String(topK));
+  formData.append("include_ksl", String(includeKsl));
+  formData.append("include_speech", String(includeSpeech));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<SignSequenceToTextResponse>("/sign-sequence-to-text-upload", formData);
+}
+
+export function photoExplainUpload({
+  imageFile,
+  objectName,
+  prompt,
+  includeKsl = true,
+  includeSpeech = false,
+  sessionId,
+}: {
+  imageFile: File;
+  objectName?: string;
+  prompt?: string;
+  includeKsl?: boolean;
+  includeSpeech?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  formData.append("image", imageFile, imageFile.name);
+  if (objectName?.trim()) {
+    formData.append("object_name", objectName.trim());
+  }
+  if (prompt?.trim()) {
+    formData.append("prompt", prompt.trim());
+  }
+  formData.append("include_ksl", String(includeKsl));
+  formData.append("include_speech", String(includeSpeech));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<PhotoExplainResponse>("/photo-explain-upload", formData);
+}
+
+export function textToKsl(request: TextToKslRequest) {
+  return postJson<TextToKslResponse>("/text-to-ksl", request);
+}
+
+export function textToSpeech(request: TextToSpeechRequest) {
+  return postJson<TextToSpeechResponse>("/text-to-speech", request);
+}
+
+export function lessonAssetLandmarkClip(assetId: string) {
+  return getJson<LessonLandmarkClipResponse>(
+    `/lesson-assets/${encodeURIComponent(assetId)}/landmark-clip`,
+  );
+}

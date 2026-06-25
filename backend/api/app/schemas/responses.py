@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -10,6 +12,20 @@ class SpeechToTextResponse(BaseModel):
     model_id: str | None = None
     detected_language: str | None = None
     text_to_ksl: TextToKslResponse | None = None
+    status: str
+
+
+class AuthUserResponse(BaseModel):
+    id: int
+    email: str
+    full_name: str | None = None
+    created_at: datetime
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: AuthUserResponse
     status: str
 
 
@@ -55,6 +71,22 @@ class LessonAsset(BaseModel):
     sample_flags: list[str] = Field(default_factory=list)
     quality_score: float | None = None
     selected_from_flagged_sample: bool | None = None
+
+
+class LandmarkFrameResponse(BaseModel):
+    pose: list[list[float]] = Field(default_factory=list)
+    leftHand: list[list[float]] = Field(default_factory=list)
+    rightHand: list[list[float]] = Field(default_factory=list)
+
+
+class LessonLandmarkClipResponse(BaseModel):
+    asset_id: str
+    label: str
+    fps: float
+    source: str
+    frame_count: int
+    landmark_path: str | None = None
+    frames: list[LandmarkFrameResponse] = Field(default_factory=list)
 
 
 class TextToKslResponse(BaseModel):

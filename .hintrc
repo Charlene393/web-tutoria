@@ -1,0 +1,22 @@
+{
+  "extends": [
+    "development"
+  ],
+  "hints": {
+    "axe/aria": [
+      "default",
+      {
+        "aria-required-children": "off",
+        "aria-roles": "off"
+      }
+    ],
+    "no-inline-styles": "off",
+    "compat-api/css": "off",
+    "axe/forms": [
+      "default",
+      {
+        "autocomplete-valid": "off"
+      }
+    ]
+  }
+}

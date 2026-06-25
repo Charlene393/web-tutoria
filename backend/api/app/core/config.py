@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     app_name: str = "Web Tutoria API"
     app_version: str = "0.1.0"
     api_v1_prefix: str = "/api/v1"
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/web_tutoria"
+    auth_jwt_secret: str = "change-me-before-production"
+    auth_jwt_algorithm: str = "HS256"
+    auth_access_token_expire_minutes: int = 1440
+    auth_password_min_length: int = 8
     sign_recognizer_artifact_path: str | None = None
     sign_recognizer_manifest_path: str | None = None
     sign_recognizer_label_set_path: str | None = None
@@ -18,6 +23,7 @@ class Settings(BaseSettings):
     sign_video_min_detection_confidence: float = 0.5
     sign_video_min_tracking_confidence: float = 0.5
     sign_video_mediapipe_model_path: str | None = None
+    sign_video_allow_unstable_macos_tasks: bool = False
     faster_whisper_model_size: str = "small"
     faster_whisper_device: str = "cpu"
     faster_whisper_compute_type: str = "int8"
@@ -33,8 +39,13 @@ class Settings(BaseSettings):
         default_factory=lambda: [
             "http://localhost:3000",
             "http://localhost:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:4173",
         ]
     )
+    allowed_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     model_config = SettingsConfigDict(
         env_file=".env",

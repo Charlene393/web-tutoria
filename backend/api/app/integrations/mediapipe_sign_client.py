@@ -145,13 +145,15 @@ def _extract_sequence_with_tasks_api(
     video_stream: Any,
     frame_step: int,
 ) -> list[dict[str, list[list[float]]]]:
-    if platform.system() == "Darwin":
+    if platform.system() == "Darwin" and not settings.sign_video_allow_unstable_macos_tasks:
         raise RuntimeError(
             "The current MediaPipe tasks runtime is not stable for sign-video extraction "
             "in this macOS backend environment. It attempts to initialize a Metal-based "
             "graphics service and can crash the process. Use uploaded `.npy` landmark files "
             "on macOS for now, or run sign-video landmark extraction on Linux or another "
-            "non-macOS environment."
+            "non-macOS environment. If you want to try the unstable macOS path anyway, set "
+            "`SIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=true` in `backend/api/.env`, restart the "
+            "backend, and test at your own risk."
         )
 
     model_path = _resolve_holistic_landmarker_model_path()

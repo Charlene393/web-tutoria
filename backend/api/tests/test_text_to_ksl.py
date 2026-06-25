@@ -55,6 +55,20 @@ def test_lesson_asset_stickman_video_endpoint_serves_mp4() -> None:
     assert len(response.content) > 0
 
 
+def test_lesson_asset_landmark_clip_endpoint_serves_frames() -> None:
+    response = client.get("/api/v1/lesson-assets/lesson-sign:me/landmark-clip")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["asset_id"] == "lesson-sign:me"
+    assert body["label"] == "ME"
+    assert body["frame_count"] > 0
+    assert len(body["frames"]) == body["frame_count"]
+    assert "pose" in body["frames"][0]
+    assert "leftHand" in body["frames"][0]
+    assert "rightHand" in body["frames"][0]
+
+
 def test_text_to_ksl_alias_uses_cleaned_catalog_asset() -> None:
     response = client.post("/api/v1/text-to-ksl", json={"text": "hello"})
 

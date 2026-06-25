@@ -23,6 +23,19 @@ cp .env.example .env
 bash start-dev.sh
 ```
 
+Important: this repo may also have a separate root-level `.venv` at `web-tutoria/.venv`.
+For backend work, always activate `backend/api/.venv`, not the repo-root one:
+
+```bash
+deactivate 2>/dev/null || true
+source /Users/charlenembugua/Documents/projects/web-tutoria/backend/api/.venv/bin/activate
+which python
+python --version
+```
+
+The backend environment must point to `backend/api/.venv/bin/python` and use Python `3.11` or `3.12`.
+`bash setup-venv.sh` now installs both the core backend requirements and the optional sign-video stack from `requirements-sign-video.txt` into `backend/api/.venv`.
+
 That is the main supported local dev flow for this backend.
 
 For the full backend verification flow after setup, use [DEMO_CHECKLIST.md](/Users/charlenembugua/Documents/projects/web-tutoria/backend/api/DEMO_CHECKLIST.md).
@@ -150,6 +163,9 @@ You do not need heavy model tests first. Begin with API contract tests.
 ## Recommended endpoints
 
 - `GET /api/v1/health`
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `GET /api/v1/auth/me`
 - `POST /api/v1/text-to-speech`
 - `POST /api/v1/speech-to-text`
 - `POST /api/v1/text-to-ksl`
@@ -177,8 +193,10 @@ These packages are now expected in `requirements-dev.txt`:
 - `soundfile`
 - `faster-whisper`
 - `python-multipart`
+- `pwdlib[argon2]`
 
 `python-multipart` is needed for FastAPI file upload endpoints.
+`pwdlib[argon2]` is needed for secure password hashing in the auth flow.
 
 If you want uploaded sign video recognition too, install the optional sign-video extras after the main setup:
 
@@ -196,6 +214,7 @@ Note for macOS:
 
 - uploaded `.npy` landmark files are the stable local path
 - MediaPipe task-based video landmark extraction is currently safer on Linux than on macOS in this backend setup
+- if you still want to try raw sign-video extraction locally on macOS, set `SIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=true` in `backend/api/.env` and restart the backend, but this path is intentionally marked unstable because it can crash the process on some macOS setups
 
 On macOS, Kokoro may also need:
 
@@ -210,7 +229,12 @@ This repo pins a Kokoro version that is meant to install cleanly in the current 
 Add these values to `backend/api/.env`:
 
 ```env
+DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/web_tutoria
+AUTH_JWT_SECRET=change-this-to-a-long-random-secret
+AUTH_ACCESS_TOKEN_EXPIRE_MINUTES=1440
+AUTH_PASSWORD_MIN_LENGTH=8
 SIGN_VIDEO_MEDIAPIPE_MODEL_PATH=app/data/holistic_landmarker.task
+SIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=false
 FASTER_WHISPER_MODEL_SIZE=small
 FASTER_WHISPER_DEVICE=cpu
 FASTER_WHISPER_COMPUTE_TYPE=int8
@@ -452,6 +476,14 @@ curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text-upload \
 ```
 
 If you are testing on macOS and the backend reports that MediaPipe tasks are not stable in this environment, use the `.npy` upload flow locally and reserve raw video extraction for Linux or a later frontend-side capture pipeline.
+
+If you want to try the unstable macOS path anyway:
+
+```bash
+cd backend/api
+printf '\nSIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=true\n' >> .env
+bash start-dev.sh
+```
 
 Or use the upload helper script from `backend/api`:
 
