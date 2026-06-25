@@ -28,6 +28,9 @@ rm -rf "$VENV_DIR"
 . "${VENV_DIR}/bin/activate"
 python -m pip install --upgrade pip
 pip install -r "${SCRIPT_DIR}/requirements-dev.txt"
+if [ -f "${SCRIPT_DIR}/requirements-sign-video.txt" ]; then
+  pip install -r "${SCRIPT_DIR}/requirements-sign-video.txt"
+fi
 
 echo
 echo "Backend virtual environment is ready."

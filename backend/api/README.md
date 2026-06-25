@@ -34,6 +34,7 @@ python --version
 ```
 
 The backend environment must point to `backend/api/.venv/bin/python` and use Python `3.11` or `3.12`.
+`bash setup-venv.sh` now installs both the core backend requirements and the optional sign-video stack from `requirements-sign-video.txt` into `backend/api/.venv`.
 
 That is the main supported local dev flow for this backend.
 

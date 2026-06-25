@@ -40,6 +40,69 @@ export type SpeechToTextResponse = {
   status: string;
 };
 
+export type SignMatchCandidate = {
+  label: string;
+  confidence: number;
+  landmark_path?: string | null;
+  lesson_asset_id?: string | null;
+};
+
+export type SignToTextResponse = {
+  label?: string | null;
+  confidence?: number | null;
+  text?: string | null;
+  provider?: string | null;
+  model_id?: string | null;
+  source_kind?: string | null;
+  source_landmark_path?: string | null;
+  source_upload_filename?: string | null;
+  matched_landmark_path?: string | null;
+  extracted_frame_count?: number | null;
+  lesson_asset_id?: string | null;
+  dataset_backed: boolean;
+  top_matches: SignMatchCandidate[];
+  speech?: TextToSpeechResponse | null;
+  status: string;
+};
+
+export type SignSequenceItemResponse = {
+  index: number;
+  label?: string | null;
+  confidence?: number | null;
+  text?: string | null;
+  source_kind?: string | null;
+  source_landmark_path?: string | null;
+  matched_landmark_path?: string | null;
+  lesson_asset_id?: string | null;
+  top_matches: SignMatchCandidate[];
+  status: string;
+};
+
+export type SignSequenceToTextResponse = {
+  text: string;
+  normalized_text: string;
+  sign_count: number;
+  items: SignSequenceItemResponse[];
+  provider?: string | null;
+  model_id?: string | null;
+  text_to_ksl?: TextToKslResponse | null;
+  speech?: TextToSpeechResponse | null;
+  status: string;
+};
+
+export type PhotoExplainResponse = {
+  object_name?: string | null;
+  normalized_object_name?: string | null;
+  explanation: string;
+  suggested_sign?: string | null;
+  provider?: string | null;
+  source_kind?: string | null;
+  source_image_filename?: string | null;
+  text_to_ksl?: TextToKslResponse | null;
+  speech?: TextToSpeechResponse | null;
+  status: string;
+};
+
 export type AuthUser = {
   id: number;
   email: string;
@@ -288,6 +351,89 @@ export function speechToTextUpload({
   }
 
   return postFormData<SpeechToTextResponse>("/speech-to-text", formData);
+}
+
+export function signToTextUpload({
+  signFile,
+  filename,
+  topK = 3,
+  includeSpeech = false,
+  sessionId,
+}: {
+  signFile: Blob;
+  filename?: string;
+  topK?: number;
+  includeSpeech?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  formData.append("sign_file", signFile, filename ?? "sign-upload.npy");
+  formData.append("top_k", String(topK));
+  formData.append("include_speech", String(includeSpeech));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<SignToTextResponse>("/sign-to-text-upload", formData);
+}
+
+export function signSequenceToTextUpload({
+  signFiles,
+  topK = 3,
+  includeKsl = true,
+  includeSpeech = false,
+  sessionId,
+}: {
+  signFiles: File[];
+  topK?: number;
+  includeKsl?: boolean;
+  includeSpeech?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  signFiles.forEach((file) => {
+    formData.append("sign_files", file, file.name);
+  });
+  formData.append("top_k", String(topK));
+  formData.append("include_ksl", String(includeKsl));
+  formData.append("include_speech", String(includeSpeech));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<SignSequenceToTextResponse>("/sign-sequence-to-text-upload", formData);
+}
+
+export function photoExplainUpload({
+  imageFile,
+  objectName,
+  prompt,
+  includeKsl = true,
+  includeSpeech = false,
+  sessionId,
+}: {
+  imageFile: File;
+  objectName?: string;
+  prompt?: string;
+  includeKsl?: boolean;
+  includeSpeech?: boolean;
+  sessionId?: string;
+}) {
+  const formData = new FormData();
+  formData.append("image", imageFile, imageFile.name);
+  if (objectName?.trim()) {
+    formData.append("object_name", objectName.trim());
+  }
+  if (prompt?.trim()) {
+    formData.append("prompt", prompt.trim());
+  }
+  formData.append("include_ksl", String(includeKsl));
+  formData.append("include_speech", String(includeSpeech));
+  if (sessionId) {
+    formData.append("session_id", sessionId);
+  }
+
+  return postFormData<PhotoExplainResponse>("/photo-explain-upload", formData);
 }
 
 export function textToKsl(request: TextToKslRequest) {

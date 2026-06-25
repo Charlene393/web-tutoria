@@ -7,7 +7,7 @@ import {
   type AuthUser,
 } from "../api/kslClient";
 import { AuthPage } from "../features/auth/AuthPage";
-import { SpeechToKslStudio } from "../features/speech/SpeechToKslStudio";
+import { LearningWorkspace } from "../features/workspace/LearningWorkspace";
 
 type AuthState =
   | { status: "loading" }
@@ -69,17 +69,6 @@ export function App() {
   }
 
   return (
-    <>
-      <div className="session-bar">
-        <div>
-          <strong>{authState.user.full_name || authState.user.email}</strong>
-          <span>{authState.user.email}</span>
-        </div>
-        <button type="button" onClick={handleLogout}>
-          Sign out
-        </button>
-      </div>
-      <SpeechToKslStudio />
-    </>
+    <LearningWorkspace user={authState.user} onLogout={handleLogout} />
   );
 }

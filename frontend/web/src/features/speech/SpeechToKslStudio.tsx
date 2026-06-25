@@ -1,4 +1,4 @@
-import { Mic, RotateCcw, Send, Square } from "lucide-react";
+import { Hand, ImagePlus, Mic, Play, RotateCcw, Send, Square, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
@@ -18,6 +18,12 @@ import loveClipData from "../lesson-player/data/love.sign.json";
 import { getInterpolatedFrame } from "../lesson-player/landmarkPlayback";
 
 type StudioStatus = "idle" | "listening" | "processing" | "ready" | "error";
+export type ListenMapProgress = {
+  capturedInput: boolean;
+  mappedGloss: boolean;
+  playedSequence: boolean;
+  playedSpeech: boolean;
+};
 
 const EMPTY_FRAME: LandmarkFrame = {
   pose: [],
@@ -83,7 +89,17 @@ function getPreferredAudioFormat() {
   };
 }
 
-export function SpeechToKslStudio() {
+export function SpeechToKslStudio({
+  onLessonReady,
+  onProgressChange,
+  onOpenSignStudio,
+  onOpenPhotoStudio,
+}: {
+  onLessonReady?: () => void;
+  onProgressChange?: (progress: ListenMapProgress) => void;
+  onOpenSignStudio?: () => void;
+  onOpenPhotoStudio?: () => void;
+}) {
   const [status, setStatus] = useState<StudioStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transcript, setTranscript] = useState("");
@@ -111,10 +127,8 @@ export function SpeechToKslStudio() {
   const audioChunksRef = useRef<Blob[]>([]);
   const clipCacheRef = useRef<Record<string, SignLandmarkClip>>({});
   const animationRef = useRef<number | null>(null);
-  const thinkingPreviewTimeoutRef = useRef<number | null>(null);
   const lastTimestampRef = useRef<number | null>(null);
   const playheadMsRef = useRef(0);
-  const [isThinkingPreview, setIsThinkingPreview] = useState(false);
   const lessonAudioRef = useRef<HTMLAudioElement | null>(null);
   const backendVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -196,9 +210,6 @@ export function SpeechToKslStudio() {
 
   useEffect(() => {
     return () => {
-      if (thinkingPreviewTimeoutRef.current !== null) {
-        window.clearTimeout(thinkingPreviewTimeoutRef.current);
-      }
       if (speechPlaybackUrl) {
         URL.revokeObjectURL(speechPlaybackUrl);
       }
@@ -206,6 +217,33 @@ export function SpeechToKslStudio() {
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, [speechPlaybackUrl]);
+
+  useEffect(() => {
+    if (backendMapping?.lesson_assets.length || transcript.trim()) {
+      onLessonReady?.();
+    }
+  }, [backendMapping, onLessonReady, transcript]);
+
+  useEffect(() => {
+    onProgressChange?.({
+      capturedInput: Boolean(transcript.trim()),
+      mappedGloss: Boolean(backendMapping?.gloss.length),
+      playedSequence:
+        Boolean(backendLessons.length) &&
+        (!isBackendSequencePlaying
+          ? activeLessonIndex > 0
+          : false),
+      playedSpeech: Boolean(speechPlaybackUrl),
+    });
+  }, [
+    activeLessonIndex,
+    backendLessons.length,
+    backendMapping?.gloss.length,
+    isBackendSequencePlaying,
+    onProgressChange,
+    speechPlaybackUrl,
+    transcript,
+  ]);
 
   useEffect(() => {
     if (!speechPlaybackUrl || !lessonAudioRef.current) {
@@ -497,112 +535,127 @@ export function SpeechToKslStudio() {
     void runPipeline(manualInput);
   }, [manualInput, runPipeline]);
 
-  const testThinkingAnimation = useCallback(() => {
-    if (thinkingPreviewTimeoutRef.current !== null) {
-      window.clearTimeout(thinkingPreviewTimeoutRef.current);
-    }
-
-    setIsThinkingPreview(true);
-    thinkingPreviewTimeoutRef.current = window.setTimeout(() => {
-      setIsThinkingPreview(false);
-      thinkingPreviewTimeoutRef.current = null;
-    }, 2200);
-  }, []);
-
   const isBusy = status === "processing";
   const isListening = status === "listening";
   const hasSpeechInput = Boolean((transcript || interimTranscript).trim());
   const glossPlaceholder = hasSpeechInput ? ["Waiting for KSL"] : [];
+  const glossTokens = gloss.length ? gloss : glossPlaceholder;
   const backendStatusSummary = backendMapping
     ? `${backendMapping.status.toUpperCase()} · ${backendLessons.length} lesson assets`
     : "Waiting for backend mapping";
 
-  const showVoiceAnimation = isBusy || isThinkingPreview;
-  const showTranscript = !isThinkingPreview && status === "ready" && Boolean(transcript.trim());
+  const showVoiceAnimation = isBusy;
+  const showTranscript = status === "ready" && Boolean(transcript.trim());
+  const shouldShowReadout = showVoiceAnimation || showTranscript || Boolean(recordingHint);
+  const shouldShowGloss = glossTokens.length > 0;
 
   return (
-    <main className="voice-shell">
+    <section className="voice-shell lesson-hero-shell">
       <section className="voice-layout" aria-labelledby="voice-title">
         <div className="voice-copy">
-          <h1 id="voice-title">Tutoria.</h1>
-          <div className="voice-readout" aria-live="polite">
-            <span className="voice-label">Transcript</span>
-            {showVoiceAnimation ? (
-              <div className="voice-thinking" role="status" aria-label="Thinking indicator">
-                <span className="voice-thinking-label">Thinking</span>
-                <span className="voice-wave" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </div>
-            ) : (
-              <p>{showTranscript ? transcript : recordingHint || ""}</p>
-            )}
+          <div className="lesson-headline">
+            <h1 id="voice-title">Learn KSL</h1>
+            <p className="voice-subtitle">
+              Speak or type, map it to gloss, then preview the signed sequence.
+            </p>
           </div>
+          {shouldShowReadout ? (
+            <div className="voice-readout" aria-live="polite">
+              <span className="voice-label">Live input</span>
+              {showVoiceAnimation ? (
+                <div className="voice-thinking" role="status" aria-label="Thinking indicator">
+                  <span className="voice-thinking-label">Preparing</span>
+                  <span className="voice-wave" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </div>
+              ) : (
+                <p>{showTranscript ? transcript : recordingHint}</p>
+              )}
+            </div>
+          ) : null}
 
-          <div className="gloss-row" aria-label="KSL gloss output">
-            {(gloss.length ? gloss : glossPlaceholder).map((token, index) => (
-              <span key={`${token}-${index}`} className={gloss.length ? "is-live" : ""}>
-                {token}
-              </span>
-            ))}
-          </div>
+          {shouldShowGloss ? (
+            <div className="gloss-row" aria-label="KSL gloss output">
+              {glossTokens.map((token, index) => (
+                <span key={`${token}-${index}`} className={gloss.length ? "is-live" : ""}>
+                  {token}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="voice-controls" aria-label="Speech controls">
-            <button
-              type="button"
-              className="orb-button"
-              onClick={isListening ? stopListening : startListening}
-              disabled={isBusy}
-              title={isListening ? "Stop recording" : "Start microphone recording"}
-            >
-              {isListening ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
-              <span>{isListening ? "Recording... tap to stop" : "Tap to record"}</span>
-            </button>
-
-            <form className="manual-input" onSubmit={submitManual}>
+            <form className="manual-input manual-input-chat" onSubmit={submitManual}>
               <input
                 value={manualInput}
                 onChange={(event) => setManualInput(event.target.value)}
-                placeholder="Type text if microphone is unavailable"
+                placeholder="Type a phrase"
                 aria-label="Manual text input"
               />
-              <button type="submit" disabled={isBusy || !manualInput.trim()}>
-                <Send aria-hidden="true" />
-                <span>Convert</span>
-              </button>
+              <div className="composer-actions">
+                <button
+                  type="button"
+                  className={`composer-icon-button composer-record-button${isListening ? " is-active" : ""}`}
+                  onClick={isListening ? stopListening : startListening}
+                  disabled={isBusy}
+                  title={isListening ? "Stop recording" : "Start microphone recording"}
+                  aria-label={isListening ? "Stop recording" : "Record speech"}
+                >
+                  {isListening ? <Square aria-hidden="true" /> : <Mic aria-hidden="true" />}
+                </button>
+                <button
+                  type="button"
+                  className="composer-icon-button"
+                  onClick={onOpenSignStudio}
+                  title="Open sign upload"
+                  aria-label="Open sign upload"
+                >
+                  <Hand aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="composer-icon-button"
+                  onClick={onOpenPhotoStudio}
+                  title="Open image explain"
+                  aria-label="Open image explain"
+                >
+                  <ImagePlus aria-hidden="true" />
+                </button>
+                <button
+                  type="submit"
+                  className="composer-send-button"
+                  disabled={isBusy || !manualInput.trim()}
+                  aria-label="Map typed text"
+                  title="Map typed text"
+                >
+                  <Send aria-hidden="true" />
+                </button>
+              </div>
             </form>
-
-            <button
-              type="button"
-              className="primary-button"
-              onClick={testThinkingAnimation}
-              disabled={isBusy || isListening || isThinkingPreview}
-            >
-              <span>Test Thinking Animation</span>
-            </button>
-          </div>
-
-          <div className="pipeline-state" role={status === "error" ? "alert" : "status"}>
-            <strong>{status.toUpperCase()}</strong>
-            <span>
-              {errorMessage ||
-                (status === "processing"
-                  ? "Mapping speech to KSL..."
-                  : "Ready for your next phrase.")}
-            </span>
+            <div className="composer-helper">
+              <span>
+                {isListening
+                  ? "Recording live. Tap the square to stop."
+                  : "Type, record, or jump to sign and image upload."}
+              </span>
+            </div>
           </div>
 
           <div className="backend-proof">
             <div className="backend-proof-header">
-             
+              <div className="backend-proof-copy">
+                <span className="voice-label">Playback</span>
+                <p>Listen back or step through the mapped signs.</p>
+              </div>
               <div className="backend-proof-actions">
                 <button
                   type="button"
@@ -610,7 +663,8 @@ export function SpeechToKslStudio() {
                   onClick={() => void speakTranscript()}
                   disabled={isBusy || isSpeechGenerating || !transcript.trim()}
                 >
-                  <span>{isSpeechGenerating ? "Generating speech..." : "Speak backend output"}</span>
+                  <Volume2 aria-hidden="true" />
+                  <span>{isSpeechGenerating ? "Generating..." : "Speak"}</span>
                 </button>
                 <button
                   type="button"
@@ -618,7 +672,8 @@ export function SpeechToKslStudio() {
                   onClick={handleBackendSequenceRestart}
                   disabled={!backendLessons.length}
                 >
-                  <span>{isBackendSequencePlaying ? "Sequence playing" : "Play lesson sequence"}</span>
+                  <Play aria-hidden="true" />
+                  <span>{isBackendSequencePlaying ? "Playing" : "Play signs"}</span>
                 </button>
               </div>
             </div>
@@ -629,8 +684,8 @@ export function SpeechToKslStudio() {
 
             {backendLessons.length ? (
               <div className="lesson-asset-sequence" aria-label="Backend lesson assets">
-                {backendLessons.map((lesson: LessonAsset, index) => (
-                  <button
+              {backendLessons.map((lesson: LessonAsset, index) => (
+                <button
                     key={`${lesson.asset_id}-${index}`}
                     type="button"
                     className={`lesson-asset-chip${index === activeLessonIndex ? " is-active" : ""}`}
@@ -684,31 +739,9 @@ export function SpeechToKslStudio() {
               <RotateCcw aria-hidden="true" />
             </button>
           </div>
-
-          <ThreeAvatarPlayer
-            key={avatarRefreshKey}
-            frame={currentFrame}
-            isPlaying={isPlaying}
-            hasPlaybackBegun={hasPlaybackBegun}
-          />
-
-          <div className="timeline" aria-label="Animation progress">
-            <div className="timeline-track">
-              <div className="timeline-fill" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-
           <div className="stickman-panel">
             <div className="stickman-copy">
-              <span className="voice-label">Backend stickman lesson proof</span>
-              <strong>{activeLesson?.label ?? "No lesson asset selected"}</strong>
-              <p>{avatarCapabilityLabel}</p>
-              <span className="stickman-sequence-badge">
-                {isAvatarClipLoading ? "Loading avatar landmark clip" : "Avatar clip synced to lesson"}
-              </span>
-              <span className="stickman-sequence-badge">
-                {isBackendSequencePlaying ? "Auto-stepping lesson sequence" : "Manual lesson step"}
-              </span>
+              <strong>{activeLesson?.label ?? "No lesson selected"}</strong>
             </div>
 
             <div className="stickman-stage">
@@ -727,13 +760,27 @@ export function SpeechToKslStudio() {
               ) : (
                 <div className="three-stage three-stage-error">
                   <strong>No backend stickman lesson clip yet.</strong>
-                  <span>Run the mapping pipeline with a supported phrase to load the dataset sign preview.</span>
                 </div>
               )}
             </div>
           </div>
+
+          <ThreeAvatarPlayer
+            key={avatarRefreshKey}
+            frame={currentFrame}
+            isPlaying={isPlaying}
+            hasPlaybackBegun={hasPlaybackBegun}
+          />
+
+          <div className="timeline" aria-label="Animation progress">
+            <div className="timeline-track">
+              <div className="timeline-fill" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+
+         
         </div>
       </section>
-    </main>
+    </section>
   );
 }
