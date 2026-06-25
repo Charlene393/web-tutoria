@@ -24,11 +24,21 @@ const REST_POSE: Record<string, THREE.Quaternion> = {
   spine:         new THREE.Quaternion(), // upright
 };
 
-const LERP_SPEED = 8; // higher = snappier, lower = smoother
-const LOWER_ARM_LERP_SPEED = 12;
-const FINGER_LERP_SPEED = 14;
+const LERP_SPEED = 14; // higher = snappier, lower = smoother
+const LOWER_ARM_LERP_SPEED = 18;
+const FINGER_LERP_SPEED = 12;
+const MIN_FINGER_SEGMENT_RATIO = 0.07;
+const FINGER_MAX_SWING_RAD = 1.0;
+const FINGER_MAX_DIRECTION_STEP_RAD_PER_SEC = 4.0;
+const HAND_POINT_SMOOTHING_SPEED = 10;
+const HAND_DIRECTION_DEADZONE_RAD = 0.05;
+const FINGER_DIRECTION_DEADZONE_RAD = 0.08;
+const HAND_MAX_SWING_RAD = 1.2;
+const PALM_NORMAL_MAX_STEP_RAD_PER_SEC = 3.2;
+const PALM_NORMAL_DEADZONE_RAD = 0.1;
 const DEFAULT_REST_LOCAL = new THREE.Vector3(0, 1, 0);
-const CROSS_BODY_MARGIN = 0.08;
+const CROSS_BODY_MARGIN = 0.02;
+const ARM_RAW_BLEND = 0.55;
 
 function pushInFrontOfPlane(
   point: THREE.Vector3,
@@ -85,6 +95,7 @@ function pushOutsideCapsule(
 }
 
 type RestDirections = Record<string, THREE.Vector3>;
+type RestUpDirections = Record<string, THREE.Vector3>;
 type HandSide = "left" | "right";
 type FingerMapping = {
   side: HandSide;
@@ -108,42 +119,45 @@ const FALLBACK_REST_LOCAL: RestDirections = {
   rightUpperArm: RIGHT_UPPER_REST.clone(),
   leftLowerArm: LEFT_LOWER_REST.clone(),
   rightLowerArm: RIGHT_LOWER_REST.clone(),
+  leftHand: DOWN_REST.clone(),
+  rightHand: DOWN_REST.clone(),
+};
+
+const HAND_CHILD_CANDIDATES: Record<HandSide, string[]> = {
+  left: [
+    "leftMiddleProximal",
+    "leftIndexProximal",
+    "leftRingProximal",
+    "leftLittleProximal",
+    "leftThumbMetacarpal",
+    "leftThumbProximal",
+  ],
+  right: [
+    "rightMiddleProximal",
+    "rightIndexProximal",
+    "rightRingProximal",
+    "rightLittleProximal",
+    "rightThumbMetacarpal",
+    "rightThumbProximal",
+  ],
 };
 
 const FINGER_SEGMENTS: Record<HandSide, Array<{ start: number; end: number; candidates: string[] }>> = {
   left: [
-    { start: 0, end: 1, candidates: ["leftThumbMetacarpal", "leftThumbProximal"] },
-    { start: 1, end: 2, candidates: ["leftThumbProximal", "leftThumbIntermediate"] },
-    { start: 2, end: 3, candidates: ["leftThumbDistal"] },
+    // Stability-first mapping: drive only primary finger joints.
+    { start: 1, end: 2, candidates: ["leftThumbProximal"] },
     { start: 5, end: 6, candidates: ["leftIndexProximal"] },
-    { start: 6, end: 7, candidates: ["leftIndexIntermediate"] },
-    { start: 7, end: 8, candidates: ["leftIndexDistal"] },
     { start: 9, end: 10, candidates: ["leftMiddleProximal"] },
-    { start: 10, end: 11, candidates: ["leftMiddleIntermediate"] },
-    { start: 11, end: 12, candidates: ["leftMiddleDistal"] },
     { start: 13, end: 14, candidates: ["leftRingProximal"] },
-    { start: 14, end: 15, candidates: ["leftRingIntermediate"] },
-    { start: 15, end: 16, candidates: ["leftRingDistal"] },
     { start: 17, end: 18, candidates: ["leftLittleProximal"] },
-    { start: 18, end: 19, candidates: ["leftLittleIntermediate"] },
-    { start: 19, end: 20, candidates: ["leftLittleDistal"] },
   ],
   right: [
-    { start: 0, end: 1, candidates: ["rightThumbMetacarpal", "rightThumbProximal"] },
-    { start: 1, end: 2, candidates: ["rightThumbProximal", "rightThumbIntermediate"] },
-    { start: 2, end: 3, candidates: ["rightThumbDistal"] },
+    // Stability-first mapping: drive only primary finger joints.
+    { start: 1, end: 2, candidates: ["rightThumbProximal"] },
     { start: 5, end: 6, candidates: ["rightIndexProximal"] },
-    { start: 6, end: 7, candidates: ["rightIndexIntermediate"] },
-    { start: 7, end: 8, candidates: ["rightIndexDistal"] },
     { start: 9, end: 10, candidates: ["rightMiddleProximal"] },
-    { start: 10, end: 11, candidates: ["rightMiddleIntermediate"] },
-    { start: 11, end: 12, candidates: ["rightMiddleDistal"] },
     { start: 13, end: 14, candidates: ["rightRingProximal"] },
-    { start: 14, end: 15, candidates: ["rightRingIntermediate"] },
-    { start: 15, end: 16, candidates: ["rightRingDistal"] },
     { start: 17, end: 18, candidates: ["rightLittleProximal"] },
-    { start: 18, end: 19, candidates: ["rightLittleIntermediate"] },
-    { start: 19, end: 20, candidates: ["rightLittleDistal"] },
   ],
 };
 
@@ -164,7 +178,19 @@ export function VrmAvatar({
 
   const vrm = gltf.userData.vrm;
   const restDirectionsRef = useRef<RestDirections | null>(null);
+  const restUpDirectionsRef = useRef<RestUpDirections | null>(null);
   const fingerMappingsRef = useRef<FingerMapping[]>([]);
+  const smoothedLeftHandRef = useRef<THREE.Vector3[]>([]);
+  const smoothedRightHandRef = useRef<THREE.Vector3[]>([]);
+  const lastHandDirectionRef = useRef<Record<HandSide, THREE.Vector3>>({
+    left: new THREE.Vector3(),
+    right: new THREE.Vector3(),
+  });
+  const lastPalmNormalRef = useRef<Record<HandSide, THREE.Vector3>>({
+    left: new THREE.Vector3(0, 0, 1),
+    right: new THREE.Vector3(0, 0, 1),
+  });
+  const lastFingerDirectionRef = useRef<Record<string, THREE.Vector3>>({});
 
   const tempVector = useRef(new THREE.Vector3());
   const tempVector2 = useRef(new THREE.Vector3());
@@ -200,11 +226,39 @@ export function VrmAvatar({
     return restDirectionsRef.current?.[name] ?? FALLBACK_REST_LOCAL[name] ?? DEFAULT_REST_LOCAL;
   }
 
+  function getRestUpForBone(name: string) {
+    return restUpDirectionsRef.current?.[name] ?? new THREE.Vector3(0, 0, 1);
+  }
+
+  function makePerpendicularDirection(
+    primary: THREE.Vector3,
+    reference: THREE.Vector3,
+  ) {
+    const projected = reference
+      .clone()
+      .sub(primary.clone().multiplyScalar(reference.dot(primary)));
+    if (projected.lengthSq() > 1e-6) {
+      return projected.normalize();
+    }
+
+    const fallbackA = new THREE.Vector3(0, 1, 0)
+      .sub(primary.clone().multiplyScalar(primary.y));
+    if (fallbackA.lengthSq() > 1e-6) {
+      return fallbackA.normalize();
+    }
+
+    const fallbackB = new THREE.Vector3(1, 0, 0)
+      .sub(primary.clone().multiplyScalar(primary.x));
+    return fallbackB.lengthSq() > 1e-6 ? fallbackB.normalize() : new THREE.Vector3(0, 0, 1);
+  }
+
   function solveBoneToWorldDirection(
     name: string,
     desiredWorldDirection: THREE.Vector3,
     delta: number,
     speed = LERP_SPEED,
+    desiredWorldUp?: THREE.Vector3,
+    maxSwingRadians?: number,
   ) {
     if (!vrm) return;
     if (desiredWorldDirection.lengthSq() < 1e-6) return;
@@ -221,8 +275,51 @@ export function VrmAvatar({
       .applyQuaternion(parentWorldQuat.invert());
 
     const restLocalDir = getRestDirectionForBone(name);
-    const targetQuat = new THREE.Quaternion().setFromUnitVectors(restLocalDir, targetLocalDir);
+    let clampedTargetLocalDir = targetLocalDir;
+
+    if (typeof maxSwingRadians === "number") {
+      const angle = restLocalDir.angleTo(targetLocalDir);
+      if (angle > maxSwingRadians && angle > 1e-5) {
+        const t = maxSwingRadians / angle;
+        clampedTargetLocalDir = restLocalDir.clone().lerp(targetLocalDir, t).normalize();
+      }
+    }
+
+    const baseQuat = new THREE.Quaternion().setFromUnitVectors(restLocalDir, clampedTargetLocalDir);
+    const targetQuat = baseQuat.clone();
+
+    if (desiredWorldUp && desiredWorldUp.lengthSq() > 1e-6) {
+      const restUpLocal = makePerpendicularDirection(restLocalDir, getRestUpForBone(name));
+      const desiredLocalUp = makePerpendicularDirection(
+        clampedTargetLocalDir,
+        desiredWorldUp.clone().normalize().applyQuaternion(parentWorldQuat.invert()),
+      );
+      const rotatedRestUp = restUpLocal.clone().applyQuaternion(baseQuat);
+      const signed = Math.atan2(
+        clampedTargetLocalDir.dot(rotatedRestUp.clone().cross(desiredLocalUp)),
+        rotatedRestUp.dot(desiredLocalUp),
+      );
+      const twist = new THREE.Quaternion().setFromAxisAngle(clampedTargetLocalDir, signed);
+      targetQuat.copy(twist.multiply(baseQuat));
+    }
+
     bone.quaternion.slerp(targetQuat, Math.min(1, delta * speed));
+  }
+
+  function getSmoothedHandPoints(
+    source: THREE.Vector3[],
+    store: React.MutableRefObject<THREE.Vector3[]>,
+    alpha: number,
+  ) {
+    if (store.current.length !== source.length) {
+      store.current = source.map((point) => point.clone());
+      return store.current;
+    }
+
+    for (let i = 0; i < source.length; i += 1) {
+      store.current[i].lerp(source[i], alpha);
+    }
+    return store.current;
   }
 
   useEffect(() => {
@@ -232,6 +329,11 @@ export function VrmAvatar({
 
     // Capture each arm bone's bind/rest direction in parent local space from this VRM.
     vrm.scene.updateMatrixWorld(true);
+    const resolveHandChild = (side: HandSide) =>
+      HAND_CHILD_CANDIDATES[side].find((candidate) =>
+        Boolean(vrm.humanoid.getNormalizedBoneNode(candidate as any)),
+      );
+
     const extracted: RestDirections = {
       leftUpperArm:
         getBoneDirInParentLocal("leftUpperArm", UPPER_TO_LOWER.leftUpperArm) ??
@@ -245,7 +347,14 @@ export function VrmAvatar({
       rightLowerArm:
         getBoneDirInParentLocal("rightLowerArm", LOWER_TO_HAND.rightLowerArm) ??
         FALLBACK_REST_LOCAL.rightLowerArm.clone(),
+      leftHand:
+        getBoneDirInParentLocal("leftHand", resolveHandChild("left")) ??
+        FALLBACK_REST_LOCAL.leftHand.clone(),
+      rightHand:
+        getBoneDirInParentLocal("rightHand", resolveHandChild("right")) ??
+        FALLBACK_REST_LOCAL.rightHand.clone(),
     };
+      const extractedUp: RestUpDirections = {};
 
     const resolvedFingerMappings: FingerMapping[] = [];
     const usedBones = new Set<string>();
@@ -285,7 +394,12 @@ export function VrmAvatar({
         DEFAULT_REST_LOCAL.clone();
     }
 
+    for (const [name, dir] of Object.entries(extracted)) {
+      extractedUp[name] = makePerpendicularDirection(dir.clone().normalize(), new THREE.Vector3(0, 0, 1));
+    }
+
     restDirectionsRef.current = extracted;
+    restUpDirectionsRef.current = extractedUp;
     fingerMappingsRef.current = resolvedFingerMappings;
   }, [vrm]);
 
@@ -294,6 +408,9 @@ export function VrmAvatar({
 
     const humanoid = vrm.humanoid;
     const rig = createRigFrame(frame);
+    const smoothingAlpha = 1 - Math.exp(-delta * HAND_POINT_SMOOTHING_SPEED);
+    const leftHandPoints = getSmoothedHandPoints(rig.leftHand, smoothedLeftHandRef, smoothingAlpha);
+    const rightHandPoints = getSmoothedHandPoints(rig.rightHand, smoothedRightHandRef, smoothingAlpha);
 
     // Drive animation only while playback is active.
     const isAnimating = isPlaying && frame.pose.length > 0;
@@ -316,10 +433,15 @@ export function VrmAvatar({
 
       const shoulderAxis = rig.rightShoulder.clone().sub(rig.leftShoulder);
       const torsoUp = rig.chest.clone().sub(rig.hips);
-      const chestForward = shoulderAxis
-        .clone()
-        .cross(torsoUp)
-        .normalize();
+      const chestForward = shoulderAxis.clone().cross(torsoUp).normalize();
+
+      // Keep the torso push plane facing the current hand side so "push in front"
+      // never flips and drives wrists through the chest on mirrored/variant rigs.
+      const averageWrist = rig.leftWrist.clone().add(rig.rightWrist).multiplyScalar(0.5);
+      const handForwardHint = averageWrist.sub(rig.chest);
+      if (handForwardHint.lengthSq() > 1e-6 && chestForward.dot(handForwardHint) < 0) {
+        chestForward.multiplyScalar(-1);
+      }
       const elbowPlaneDistance = Math.max(0.03, rig.shoulderWidth * 0.05);
       const wristPlaneDistance = Math.max(0.06, rig.shoulderWidth * 0.08);
 
@@ -364,6 +486,11 @@ export function VrmAvatar({
         elbowPlaneDistance,
       );
 
+      // Keep chest collision protection, but blend back toward raw stickman motion
+      // so arms don't look overly rigid.
+      leftElbowPoint.lerp(rig.leftElbow, ARM_RAW_BLEND);
+      rightElbowPoint.lerp(rig.rightElbow, ARM_RAW_BLEND);
+
       let leftWristPoint = pushOutsideSphere(
         rig.leftWrist,
         torsoCenter,
@@ -405,6 +532,10 @@ export function VrmAvatar({
         wristPlaneDistance,
       );
 
+      // Keep hands closer to source landmarks for expressive signing.
+      leftWristPoint.lerp(rig.leftWrist, ARM_RAW_BLEND);
+      rightWristPoint.lerp(rig.rightWrist, ARM_RAW_BLEND);
+
       leftWristPoint = pushOutsideSphere(
         leftWristPoint,
         headCenter,
@@ -434,14 +565,139 @@ export function VrmAvatar({
       solveBoneToWorldDirection("leftLowerArm", leftLowerDir, delta, LOWER_ARM_LERP_SPEED);
       solveBoneToWorldDirection("rightLowerArm", rightLowerDir, delta, LOWER_ARM_LERP_SPEED);
 
+      const leftHandDir =
+        leftHandPoints.length > 9
+          ? leftHandPoints[9].clone().sub(leftHandPoints[0])
+          : leftLowerDir.clone();
+      const rightHandDir =
+        rightHandPoints.length > 9
+          ? rightHandPoints[9].clone().sub(rightHandPoints[0])
+          : rightLowerDir.clone();
+
+      for (const side of ["left", "right"] as const) {
+        const currentDirection = side === "left" ? leftHandDir : rightHandDir;
+        const lastDirection = lastHandDirectionRef.current[side];
+        if (
+          lastDirection.lengthSq() > 1e-6 &&
+          currentDirection.lengthSq() > 1e-6 &&
+          lastDirection.angleTo(currentDirection) < HAND_DIRECTION_DEADZONE_RAD
+        ) {
+          currentDirection.copy(lastDirection);
+        } else if (currentDirection.lengthSq() > 1e-6) {
+          lastHandDirectionRef.current[side] = currentDirection.clone();
+        }
+      }
+
+      const leftPalmNormal =
+        leftHandPoints.length > 17
+          ? leftHandPoints[5].clone().sub(leftHandPoints[0]).cross(
+              leftHandPoints[17].clone().sub(leftHandPoints[0]),
+            )
+          : new THREE.Vector3(0, 0, 1);
+      const rightPalmNormal =
+        rightHandPoints.length > 17
+          ? rightHandPoints[17].clone().sub(rightHandPoints[0]).cross(
+              rightHandPoints[5].clone().sub(rightHandPoints[0]),
+            )
+          : new THREE.Vector3(0, 0, 1);
+
+      for (const side of ["left", "right"] as const) {
+        const normal = side === "left" ? leftPalmNormal : rightPalmNormal;
+        const lastNormal = lastPalmNormalRef.current[side];
+        if (normal.lengthSq() < 1e-6) {
+          normal.copy(lastNormal);
+          continue;
+        }
+
+        normal.normalize();
+        const angle = lastNormal.angleTo(normal);
+        if (angle < PALM_NORMAL_DEADZONE_RAD) {
+          normal.copy(lastNormal);
+          continue;
+        }
+
+        const maxStep = PALM_NORMAL_MAX_STEP_RAD_PER_SEC * delta;
+        if (angle > maxStep && angle > 1e-5) {
+          const t = maxStep / angle;
+          normal.copy(lastNormal.clone().lerp(normal, t).normalize());
+        }
+        lastPalmNormalRef.current[side] = normal.clone();
+      }
+
+      // Stability-first wrist solve: direction-only avoids palm-normal twist jitter.
+      solveBoneToWorldDirection(
+        "leftHand",
+        leftHandDir,
+        delta,
+        LOWER_ARM_LERP_SPEED,
+        undefined,
+        HAND_MAX_SWING_RAD,
+      );
+      solveBoneToWorldDirection(
+        "rightHand",
+        rightHandDir,
+        delta,
+        LOWER_ARM_LERP_SPEED,
+        undefined,
+        HAND_MAX_SWING_RAD,
+      );
+
       for (const mapping of fingerMappingsRef.current) {
-        const points = mapping.side === "left" ? rig.leftHand : rig.rightHand;
+        const points = mapping.side === "left" ? leftHandPoints : rightHandPoints;
         if (points.length <= mapping.end) {
           continue;
         }
 
         const desiredDirection = points[mapping.end].clone().sub(points[mapping.start]);
-        solveBoneToWorldDirection(mapping.boneName, desiredDirection, delta, FINGER_LERP_SPEED);
+        const handSpan =
+          points.length > 17
+            ? points[5].distanceTo(points[17])
+            : points.length > 9
+              ? points[0].distanceTo(points[9])
+              : 0;
+        const minSegmentLength = handSpan * MIN_FINGER_SEGMENT_RATIO;
+
+        if (desiredDirection.length() < minSegmentLength) {
+          const cachedDirection = lastFingerDirectionRef.current[mapping.boneName];
+          if (!cachedDirection) {
+            continue;
+          }
+          desiredDirection.copy(cachedDirection);
+        } else {
+          const cachedDirection = lastFingerDirectionRef.current[mapping.boneName];
+          if (
+            cachedDirection &&
+            cachedDirection.lengthSq() > 1e-6 &&
+            desiredDirection.angleTo(cachedDirection) < FINGER_DIRECTION_DEADZONE_RAD
+          ) {
+            desiredDirection.copy(cachedDirection);
+          }
+        }
+
+        const previousDirection = lastFingerDirectionRef.current[mapping.boneName];
+        if (previousDirection && previousDirection.lengthSq() > 1e-6) {
+          const currentDirectionNorm = desiredDirection.clone().normalize();
+          const previousDirectionNorm = previousDirection.clone().normalize();
+          const angle = previousDirectionNorm.angleTo(currentDirectionNorm);
+          const maxStep = FINGER_MAX_DIRECTION_STEP_RAD_PER_SEC * delta;
+          if (angle > maxStep && angle > 1e-5) {
+            const t = maxStep / angle;
+            const limitedDirection = previousDirectionNorm.lerp(currentDirectionNorm, t).normalize();
+            desiredDirection.copy(limitedDirection.multiplyScalar(desiredDirection.length()));
+          }
+        }
+
+        lastFingerDirectionRef.current[mapping.boneName] = desiredDirection.clone();
+
+        // Keep finger solve simple and stable: direction-only from stickman landmarks.
+        solveBoneToWorldDirection(
+          mapping.boneName,
+          desiredDirection,
+          delta,
+          FINGER_LERP_SPEED,
+          undefined,
+          FINGER_MAX_SWING_RAD,
+        );
       }
 
       setBone("spine",

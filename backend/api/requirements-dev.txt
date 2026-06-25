@@ -1,6 +1,9 @@
 faster-whisper
 kokoro==0.7.16
 misaki==0.9.4
+# Keep Kokoro's PLBERT path compatible with torch 2.2.x in this project.
+transformers<5
+huggingface-hub<1
 numpy
 soundfile
 fastapi>=0.115.0
