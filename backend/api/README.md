@@ -214,6 +214,7 @@ Note for macOS:
 
 - uploaded `.npy` landmark files are the stable local path
 - MediaPipe task-based video landmark extraction is currently safer on Linux than on macOS in this backend setup
+- if you still want to try raw sign-video extraction locally on macOS, set `SIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=true` in `backend/api/.env` and restart the backend, but this path is intentionally marked unstable because it can crash the process on some macOS setups
 
 On macOS, Kokoro may also need:
 
@@ -233,6 +234,7 @@ AUTH_JWT_SECRET=change-this-to-a-long-random-secret
 AUTH_ACCESS_TOKEN_EXPIRE_MINUTES=1440
 AUTH_PASSWORD_MIN_LENGTH=8
 SIGN_VIDEO_MEDIAPIPE_MODEL_PATH=app/data/holistic_landmarker.task
+SIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=false
 FASTER_WHISPER_MODEL_SIZE=small
 FASTER_WHISPER_DEVICE=cpu
 FASTER_WHISPER_COMPUTE_TYPE=int8
@@ -474,6 +476,14 @@ curl -X POST http://127.0.0.1:8000/api/v1/sign-to-text-upload \
 ```
 
 If you are testing on macOS and the backend reports that MediaPipe tasks are not stable in this environment, use the `.npy` upload flow locally and reserve raw video extraction for Linux or a later frontend-side capture pipeline.
+
+If you want to try the unstable macOS path anyway:
+
+```bash
+cd backend/api
+printf '\nSIGN_VIDEO_ALLOW_UNSTABLE_MACOS_TASKS=true\n' >> .env
+bash start-dev.sh
+```
 
 Or use the upload helper script from `backend/api`:
 

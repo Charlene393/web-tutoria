@@ -177,10 +177,16 @@ def _check_runtime_dependency(
 def _check_sign_video_model() -> ReadinessCheck:
     model_path = _resolve_sign_video_model_path()
     if platform.system() == "Darwin":
-        detail = (
-            "Raw MediaPipe sign-video extraction is treated as optional on macOS because the "
-            "current task runtime is not stable in this local backend environment."
-        )
+        if settings.sign_video_allow_unstable_macos_tasks:
+            detail = (
+                "macOS sign-video extraction override is enabled. The MediaPipe task runtime "
+                "will be attempted locally, but it remains unstable and may crash the process."
+            )
+        else:
+            detail = (
+                "Raw MediaPipe sign-video extraction is treated as optional on macOS because the "
+                "current task runtime is not stable in this local backend environment."
+            )
         if model_path.exists():
             detail = f"{detail} The model file is present if you later test this on Linux."
         return ReadinessCheck(

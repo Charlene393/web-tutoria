@@ -249,17 +249,9 @@ export function LearningWorkspace({
         <section className="workspace-focus">
           <div className="workspace-focus-header">
             <div>
-              <p className="workspace-kicker">Independent module</p>
               <h2>Explain from a photo</h2>
-              <p className="workspace-focus-copy">
-                This module is a separate teaching product for object-based exploration and should
-                feel different from the mapping flow.
-              </p>
             </div>
-            <div className="workspace-stage-badge">
-              <Camera size={16} />
-              <span>Standalone photo product</span>
-            </div>
+            
           </div>
 
           <PhotoExplainStudio
