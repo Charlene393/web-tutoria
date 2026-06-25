@@ -1,6 +1,10 @@
 import { ImagePlus, Lightbulb } from "lucide-react";
 import { useEffect, useState } from "react";
-import { photoExplainUpload, type PhotoExplainResponse } from "../../api/kslClient";
+import {
+  photoExplainUpload,
+  resolveBackendMediaUrl,
+  type PhotoExplainResponse,
+} from "../../api/kslClient";
 
 function decodeAudioToUrl(audioBase64: string, contentType: string) {
   const binary = window.atob(audioBase64);
@@ -25,6 +29,11 @@ export function PhotoExplainStudio({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [result, setResult] = useState<PhotoExplainResponse | null>(null);
   const [speechUrl, setSpeechUrl] = useState<string | null>(null);
+  const [activeLessonIndex, setActiveLessonIndex] = useState(0);
+
+  const lessonAssets = result?.text_to_ksl?.lesson_assets ?? [];
+  const activeLesson = lessonAssets[activeLessonIndex] ?? lessonAssets[0] ?? null;
+  const activeLessonVideoUrl = resolveBackendMediaUrl(activeLesson?.stickman_video_url);
 
   useEffect(() => {
     return () => {
@@ -39,6 +48,10 @@ export function PhotoExplainStudio({
       onComplete?.();
     }
   }, [onComplete, result]);
+
+  useEffect(() => {
+    setActiveLessonIndex(0);
+  }, [result]);
 
   async function handleSubmit() {
     if (!imageFile) {
@@ -161,6 +174,71 @@ export function PhotoExplainStudio({
                   ))}
                 </div>
               ) : null}
+
+              {lessonAssets.length ? (
+                <div className="photo-sign-player">
+                  <div className="photo-sign-player-head">
+                    <div>
+                      <span className="voice-label">Sign lesson</span>
+                      <strong>{activeLesson?.label ?? result.suggested_sign ?? "KSL sign"}</strong>
+                    </div>
+                    <span className="photo-sign-player-stat">
+                      {activeLesson?.sample_count ?? 0} samples
+                    </span>
+                  </div>
+
+                  {lessonAssets.length > 1 ? (
+                    <div className="photo-sign-sequence" aria-label="Photo lesson sign options">
+                      {lessonAssets.map((lesson, index) => (
+                        <button
+                          key={`${lesson.asset_id}-${index}`}
+                          type="button"
+                          className={`lesson-asset-chip${index === activeLessonIndex ? " is-active" : ""}`}
+                          onClick={() => setActiveLessonIndex(index)}
+                        >
+                          <span>{index + 1}</span>
+                          <strong>{lesson.label}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {activeLessonVideoUrl ? (
+                    <div className="photo-sign-stage">
+                      <video
+                        key={activeLessonVideoUrl}
+                        src={activeLessonVideoUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        muted
+                        className="photo-sign-video"
+                      />
+                    </div>
+                  ) : (
+                    <div className="result-list-item">
+                      <span>Sign preview</span>
+                      <strong>No stickman lesson clip was returned for this item yet.</strong>
+                    </div>
+                  )}
+
+                  <div className="photo-sign-meta">
+                    <div className="result-list-item">
+                      <span>Dataset label</span>
+                      <strong>{activeLesson?.label ?? result.suggested_sign ?? "Not available"}</strong>
+                    </div>
+                    <div className="result-list-item">
+                      <span>Frames</span>
+                      <strong>{activeLesson?.frame_count ?? 0}</strong>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="result-list-item">
+                  <span>Sign lesson</span>
+                  <strong>No dataset-backed sign lesson was returned for this photo yet.</strong>
+                </div>
+              )}
 
               {speechUrl ? <audio controls src={speechUrl} className="workspace-audio" /> : null}
             </div>

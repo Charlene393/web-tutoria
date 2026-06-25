@@ -1064,6 +1064,71 @@ button {
   gap: 10px;
 }
 
+.photo-sign-player {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(129, 151, 165, 0.2);
+  background: rgba(10, 15, 19, 0.52);
+}
+
+.photo-sign-player-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.photo-sign-player-head strong {
+  display: block;
+  margin-top: 4px;
+  color: #f4fafc;
+  font-size: 1rem;
+}
+
+.photo-sign-player-stat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(129, 151, 165, 0.22);
+  color: var(--ink-2);
+  background: rgba(17, 25, 31, 0.88);
+  font-size: 0.82rem;
+}
+
+.photo-sign-sequence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.photo-sign-stage {
+  width: 100%;
+  min-height: 220px;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(129, 151, 165, 0.2);
+  background: #0d1217;
+}
+
+.photo-sign-video {
+  width: 100%;
+  min-height: 220px;
+  display: block;
+  object-fit: contain;
+  background: #0d1217;
+}
+
+.photo-sign-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .workspace-audio {
   width: 100%;
 }
@@ -1106,7 +1171,8 @@ button {
   .practice-grid,
   .workspace-grid,
   .workspace-grid-tight,
-  .metric-grid {
+  .metric-grid,
+  .photo-sign-meta {
     grid-template-columns: 1fr;
   }
 
